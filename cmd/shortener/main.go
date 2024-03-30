@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 
+	"github.com/caarlos0/env/v6"
 	"github.com/kTowkA/shortener/internal/app"
 	"github.com/kTowkA/shortener/internal/config"
 )
@@ -19,8 +20,7 @@ func init() {
 }
 
 func main() {
-	flag.Parse()
-	cfg, err := config.NewConfig(config.ConfigAddress(flagA), config.ConfigBaseAddress(flagB))
+	cfg, err := configurate()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -31,4 +31,24 @@ func main() {
 	if err = srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configurate() (config.Config, error) {
+	flag.Parse()
+
+	cfg := config.Config{}
+	err := env.Parse(&cfg)
+	if err != nil {
+		return config.Config{}, err
+	}
+
+	if cfg.Address == "" {
+		cfg.Address = flagA
+	}
+
+	if cfg.BaseAddress == "" {
+		cfg.BaseAddress = flagB
+	}
+
+	return cfg, nil
 }

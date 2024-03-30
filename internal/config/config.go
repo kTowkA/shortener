@@ -6,8 +6,8 @@ const (
 )
 
 type Config struct {
-	Address     string
-	BaseAddress string
+	Address     string `env:"SERVER_ADDRESS"`
+	BaseAddress string `env:"BASE_URL"`
 }
 
 type ConfigParam func(c *Config)
