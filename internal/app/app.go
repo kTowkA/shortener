@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kTowkA/shortener/internal/config"
 )
 
 const (
@@ -33,7 +34,8 @@ var (
 )
 
 type Server struct {
-	db DB
+	db     DB
+	Config config.Config
 }
 
 type DB struct {
@@ -41,8 +43,10 @@ type DB struct {
 	sync.Mutex
 }
 
-func NewServer() (*Server, error) {
+func NewServer(cfg config.Config) (*Server, error) {
+	cfg.BaseAddress = strings.TrimPrefix(cfg.BaseAddress, "/") + "/"
 	return &Server{
+		Config: cfg,
 		db: DB{
 			pairs: make(map[string]string),
 			Mutex: sync.Mutex{},
@@ -50,7 +54,7 @@ func NewServer() (*Server, error) {
 	}, nil
 }
 
-func (s *Server) ListenAndServe(address string) error {
+func (s *Server) ListenAndServe() error {
 	mux := chi.NewRouter()
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)
@@ -60,7 +64,7 @@ func (s *Server) ListenAndServe(address string) error {
 	})
 	// mux.HandleFunc("/", s.rootHandle)
 
-	return http.ListenAndServe(address, mux)
+	return http.ListenAndServe(s.Config.Address, mux)
 }
 
 // rootHandle стандартный обработчик

@@ -8,21 +8,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kTowkA/shortener/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// var (
-// 	defaultAddress     = "localhost:8080"
-// 	defaultBaseAddress = "http://localhost:8080"
+var (
+	defaultAddress     = "localhost:8080"
+	defaultBaseAddress = "http://localhost:8080"
 
-// 	cfg = config.Config{
-// 		Address:     defaultAddress,
-// 		BaseAddress: defaultBaseAddress,
-// 	}
-// )
+	cfg = config.Config{
+		Address:     defaultAddress,
+		BaseAddress: defaultBaseAddress,
+	}
+)
 
 func TestPost(t *testing.T) {
+
+	s, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("Создание сервера. %v", err)
+	}
 
 	type want struct {
 		code        int
@@ -86,12 +92,6 @@ func TestPost(t *testing.T) {
 		},
 	}
 
-	s, err := NewServer()
-
-	if err != nil {
-		t.Fatalf("Создание сервера. %v", err)
-	}
-
 	for _, test := range tests {
 
 		t.Run(test.name, func(t *testing.T) {
@@ -111,8 +111,7 @@ func TestPost(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	s, err := NewServer()
-
+	s, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("Создание сервера. %v", err)
 	}
