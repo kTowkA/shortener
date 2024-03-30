@@ -126,6 +126,8 @@ func TestGet(t *testing.T) {
 	require.Equal(t, http.StatusCreated, response.StatusCode)
 	body, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
+	err = response.Body.Close()
+	require.NoError(t, err)
 	fullLinkShort := string(body)
 	sl := strings.Split(fullLinkShort, "/")
 	linkShort := sl[len(sl)-1]
@@ -193,6 +195,8 @@ func TestGet(t *testing.T) {
 			response := w.Result()
 			assert.Equal(t, test.want.code, response.StatusCode)
 			assert.Equal(t, test.want.location, response.Header.Get("Location"))
+			err = response.Body.Close()
+			require.NoError(t, err)
 			// assert.Equal(t, test.want.contentType, response.Header.Get("content-type"))
 		})
 	}
