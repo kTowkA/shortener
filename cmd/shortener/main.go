@@ -19,6 +19,7 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
 	cfg, err := config.NewConfig(config.ConfigAddress(flagA), config.ConfigBaseAddress(flagB))
 	if err != nil {
 		log.Fatal(err)
