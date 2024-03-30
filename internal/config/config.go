@@ -1,8 +1,8 @@
 package config
 
 const (
-	ENV_SERVER_ADDRESS = "SERVER_ADDRESS"
-	ENV_BASE_URL       = "BASE_URL"
+	EnvServerAddress = "SERVER_ADDRESS"
+	EnvBaseURL       = "BASE_URL"
 )
 
 type Config struct {
