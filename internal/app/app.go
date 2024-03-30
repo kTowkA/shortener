@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -49,23 +51,29 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) ListenAndServe(address string) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.rootHandle)
+	mux := chi.NewRouter()
+	mux.Route("/", func(r chi.Router) {
+		r.Post("/", s.encodeURL)
+		r.Route("/{short}", func(r chi.Router) {
+			r.Get("/", s.decodeURL)
+		})
+	})
+	// mux.HandleFunc("/", s.rootHandle)
 
 	return http.ListenAndServe(address, mux)
 }
 
 // rootHandle стандартный обработчик
-func (s *Server) rootHandle(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		s.encodeURL(w, r)
-		return
-	case http.MethodGet:
-		s.decodeURL(w, r)
-	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
-}
+// func (s *Server) rootHandle(w http.ResponseWriter, r *http.Request) {
+// 	switch r.Method {
+// 	case http.MethodPost:
+// 		s.encodeURL(w, r)
+// 		return
+// 	case http.MethodGet:
+// 		s.decodeURL(w, r)
+// 	}
+// 	w.WriteHeader(http.StatusMethodNotAllowed)
+// }
 
 // encodeURL обработчик для кодирования входящего урла
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +159,7 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем что есть подзапрос
 	path := strings.Trim(r.URL.Path, "/")
+	// path := chi.URLParam(r, "short")
 	if path == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return

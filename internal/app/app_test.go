@@ -164,7 +164,7 @@ func TestGet(t *testing.T) {
 		{
 			name: "404",
 			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodGet, "http://localhost//404", nil)
+				request := *httptest.NewRequest(http.MethodGet, "http://localhost/404", nil)
 				request.Header.Set(contentType, plainTextContentType)
 				return request
 			}(),
