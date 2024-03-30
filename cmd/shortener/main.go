@@ -7,7 +7,6 @@ import (
 )
 
 func main() {
-
 	srv, err := app.NewServer()
 	if err != nil {
 		log.Fatal(err)
