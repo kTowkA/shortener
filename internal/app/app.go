@@ -2,17 +2,19 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kTowkA/shortener/internal/config"
+	"github.com/kTowkA/shortener/internal/storage"
+	"github.com/kTowkA/shortener/internal/storage/memory"
 )
 
 const (
@@ -34,23 +36,15 @@ var (
 )
 
 type Server struct {
-	db     DB
+	db     storage.Storager
 	Config config.Config
 }
 
-type DB struct {
-	pairs map[string]string
-	sync.Mutex
-}
-
 func NewServer(cfg config.Config) (*Server, error) {
-	cfg.BaseAddress = strings.TrimPrefix(cfg.BaseAddress, "/") + "/"
+	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
 	return &Server{
 		Config: cfg,
-		db: DB{
-			pairs: make(map[string]string),
-			Mutex: sync.Mutex{},
-		},
+		db:     memory.NewStorage(),
 	}, nil
 }
 
@@ -62,22 +56,9 @@ func (s *Server) ListenAndServe() error {
 			r.Get("/", s.decodeURL)
 		})
 	})
-	// mux.HandleFunc("/", s.rootHandle)
 
 	return http.ListenAndServe(s.Config.Address, mux)
 }
-
-// rootHandle стандартный обработчик
-// func (s *Server) rootHandle(w http.ResponseWriter, r *http.Request) {
-// 	switch r.Method {
-// 	case http.MethodPost:
-// 		s.encodeURL(w, r)
-// 		return
-// 	case http.MethodGet:
-// 		s.decodeURL(w, r)
-// 	}
-// 	w.WriteHeader(http.StatusMethodNotAllowed)
-// }
 
 // encodeURL обработчик для кодирования входящего урла
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
@@ -127,25 +108,20 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		genLink = "http://" + r.Host + "/" + genLink
-
-		s.db.Mutex.Lock()
-		_, ok := s.db.pairs[genLink]
-		s.db.Mutex.Unlock()
-
+		err = s.db.SaveURL(context.Background(), link, genLink)
 		// такая ссылка уже существует
-		if ok {
+		if errors.Is(err, storage.ErrURLIsExist) {
 			continue
+		} else if err != nil {
+			// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-
-		s.db.Mutex.Lock()
-		s.db.pairs[genLink] = link
-		s.db.Mutex.Unlock()
 
 		// успешно
 		w.Header().Set(contentType, plainTextContentType)
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(genLink))
+		w.Write([]byte(s.Config.BaseAddress + genLink))
 
 		return
 	}
@@ -162,28 +138,20 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем что есть подзапрос
-	path := strings.Trim(r.URL.Path, "/")
-	// path := chi.URLParam(r, "short")
-	if path == "" {
+	short := strings.Trim(r.URL.Path, "/")
+	if short == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// http://localhost/771249
-	// http://localhost/http://localhost/771249
-	// получаем короткую ссылку (если нет в урле /, то считаем, что передали короткую ссылку)
-	sl := strings.Split(path, "/")
-	short := "http://" + r.Host + "/" + path
-	if len(sl) > 1 {
-		short = path
-	}
-	s.db.Mutex.Lock()
-	real, ok := s.db.pairs[short]
-	s.db.Mutex.Unlock()
-
+	real, err := s.db.RealURL(context.Background(), short)
 	// ничего не нашли
-	if !ok {
+	if errors.Is(err, storage.ErrURLNotFound) {
 		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
