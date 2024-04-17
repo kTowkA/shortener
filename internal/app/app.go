@@ -8,13 +8,16 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kTowkA/shortener/internal/config"
+	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -41,6 +44,7 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config) (*Server, error) {
+	logger.Init(os.Stdout, logger.LevelFromString(cfg.LogLevel))
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
 	return &Server{
 		Config: cfg,
@@ -50,13 +54,18 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 func (s *Server) ListenAndServe() error {
 	mux := chi.NewRouter()
+
+	mux.Use(withLog)
+
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)
 		r.Route("/{short}", func(r chi.Router) {
 			r.Get("/", s.decodeURL)
 		})
 	})
-
+	logger.Log.WithFields(logrus.Fields{
+		"адрес": s.Config.Address,
+	}).Info("запуск сервера")
 	return http.ListenAndServe(s.Config.Address, mux)
 }
 

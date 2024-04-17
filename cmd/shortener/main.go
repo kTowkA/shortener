@@ -10,13 +10,15 @@ import (
 )
 
 var (
-	flagA string
-	flagB string
+	flagA    string
+	flagB    string
+	logLevel string
 )
 
 func init() {
 	flag.StringVar(&flagA, "a", "localhost:8080", "address:host")
 	flag.StringVar(&flagB, "b", "http://localhost:8080", "result address")
+	flag.StringVar(&logLevel, "l", "info", "level (panic,fatal,error,warn,info,debug,trace)")
 }
 
 func main() {
@@ -36,7 +38,9 @@ func main() {
 func configurate() (config.Config, error) {
 	flag.Parse()
 
-	cfg := config.Config{}
+	cfg := config.Config{
+		LogLevel: logLevel,
+	}
 	err := env.Parse(&cfg)
 	if err != nil {
 		return config.Config{}, err

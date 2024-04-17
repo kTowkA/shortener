@@ -8,6 +8,7 @@ const (
 type Config struct {
 	Address     string `env:"SERVER_ADDRESS"`
 	BaseAddress string `env:"BASE_URL"`
+	LogLevel    string
 }
 
 type ConfigParam func(c *Config)
