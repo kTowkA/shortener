@@ -1,11 +1,9 @@
 package app
 
 import (
-	"math/rand"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kTowkA/shortener/internal/config"
@@ -19,6 +17,7 @@ const (
 	plainTextContentType       = "text/plain"
 	applicationJSONContentType = "application/json"
 	textHTMLContentType        = "text/html"
+	applicationXGZIP           = "application/x-gzip"
 	contentType                = "content-type"
 	contentEncoding            = "content-encoding"
 	acceptEncoding             = "accept-encoding"
@@ -68,20 +67,4 @@ func (s *Server) ListenAndServe() error {
 		"адрес": s.Config.Address,
 	}).Info("запуск сервера")
 	return http.ListenAndServe(s.Config.Address, mux)
-}
-
-// generate генерируем случайную строку
-func generate(lenght int) (string, error) {
-	r := rand.New(rand.NewSource(time.Now().Unix()))
-
-	b := strings.Builder{}
-	b.Grow(lenght)
-
-	for i := 0; i < lenght; i++ {
-		_, err := b.WriteString(generateChars[r.Intn(len(generateChars))])
-		if err != nil {
-			return "", err
-		}
-	}
-	return b.String(), nil
 }

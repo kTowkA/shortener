@@ -101,6 +101,7 @@ func withGZIP(h http.Handler) http.Handler {
 				gzw:  gzip.NewWriter(w),
 			}
 			newWriter = cw
+			cw.Header().Set("Content-Encoding", "gzip")
 			defer cw.gzw.Close()
 		}
 

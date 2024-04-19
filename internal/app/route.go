@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
@@ -24,7 +26,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get(contentType), plainTextContentType) {
+	if !strings.HasPrefix(r.Header.Get(contentType), plainTextContentType) && !strings.HasPrefix(r.Header.Get(contentType), applicationXGZIP) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -104,7 +106,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get(contentType), applicationJSONContentType) {
+	if !strings.HasPrefix(r.Header.Get(contentType), applicationJSONContentType) && !strings.HasPrefix(r.Header.Get(contentType), applicationXGZIP) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -147,7 +149,9 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set(contentType, applicationJSONContentType)
+	if w.Header().Get(contentType) == "" {
+		w.Header().Set(contentType, applicationJSONContentType)
+	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
 }
@@ -175,4 +179,20 @@ func (s *Server) saveLink(link string, attems int) (string, error) {
 
 	// не уложись в заданное количество попыток для создания короткой ссылки
 	return "", errors.New("не смогли создать короткую ссылку")
+}
+
+// generate генерируем случайную строку
+func generate(lenght int) (string, error) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b := strings.Builder{}
+	b.Grow(lenght)
+
+	for i := 0; i < lenght; i++ {
+		_, err := b.WriteString(generateChars[r.Intn(len(generateChars))])
+		if err != nil {
+			return "", err
+		}
+	}
+	return b.String(), nil
 }
