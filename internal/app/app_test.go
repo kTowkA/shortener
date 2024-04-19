@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/kTowkA/shortener/internal/config"
+	"github.com/kTowkA/shortener/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -197,6 +200,103 @@ func TestGet(t *testing.T) {
 			err = response.Body.Close()
 			require.NoError(t, err)
 			// assert.Equal(t, test.want.contentType, response.Header.Get("content-type"))
+		})
+	}
+}
+
+func TestAPIShorten(t *testing.T) {
+
+	reqGo := model.RequestShortURL{
+		URL: "http://ya.ru",
+	}
+	reqBody, err := json.Marshal(reqGo)
+	require.NoError(t, err)
+	s, err := NewServer(cfg)
+	require.NoError(t, err, "Создание сервера")
+
+	type (
+		want struct {
+			code                int
+			requestContentType  string
+			responseContentType string
+		}
+	)
+
+	tests := []struct {
+		name    string
+		request http.Request
+		want    want
+	}{
+		{
+			name:    "неправильный метод",
+			request: *httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/shorten", nil),
+			want: want{
+				code: http.StatusMethodNotAllowed,
+			},
+		},
+		{
+			name:    "неправильный content-type",
+			request: *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil),
+			want: want{
+				code:               http.StatusBadRequest,
+				requestContentType: applicationJsonContentType,
+			},
+		},
+		{
+			name: "пустое тело запроса",
+			request: func() http.Request {
+				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil)
+				request.Header.Set(contentType, applicationJsonContentType)
+				return request
+			}(),
+			want: want{
+				code:               http.StatusBadRequest,
+				requestContentType: applicationJsonContentType,
+			},
+		},
+		{
+			name: "ошибка ковертации",
+			request: func() http.Request {
+				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader("http://ya.ru"))
+				request.Header.Set(contentType, applicationJsonContentType)
+				return request
+			}(),
+			want: want{
+				code:                http.StatusBadRequest,
+				requestContentType:  applicationJsonContentType,
+				responseContentType: applicationJsonContentType,
+			},
+		},
+		{
+			name: "валидный запрос",
+			request: func() http.Request {
+				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", bytes.NewBuffer(reqBody))
+				request.Header.Set(contentType, applicationJsonContentType)
+				return request
+			}(),
+			want: want{
+				code:                http.StatusCreated,
+				requestContentType:  applicationJsonContentType,
+				responseContentType: applicationJsonContentType,
+			},
+		},
+	}
+
+	for _, test := range tests {
+
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.apiShorten(w, &test.request)
+			// s.encodeURL(w, &test.request)
+			response := w.Result()
+			assert.Equal(t, test.want.code, response.StatusCode)
+			link, err := io.ReadAll(response.Body)
+			require.NoError(t, err)
+			if string(link) != "" {
+				t.Logf("переданная ссылка: %s. короткая ссылка: %s", "", string(link))
+			}
+			err = response.Body.Close()
+			require.NoError(t, err)
 		})
 	}
 }
