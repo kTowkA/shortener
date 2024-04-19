@@ -104,7 +104,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get(contentType), applicationJsonContentType) {
+	if !strings.HasPrefix(r.Header.Get(contentType), applicationJSONContentType) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -147,7 +147,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set(contentType, applicationJsonContentType)
+	w.Header().Set(contentType, applicationJSONContentType)
 	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
 }

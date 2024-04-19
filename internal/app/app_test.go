@@ -239,45 +239,45 @@ func TestAPIShorten(t *testing.T) {
 			request: *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil),
 			want: want{
 				code:               http.StatusBadRequest,
-				requestContentType: applicationJsonContentType,
+				requestContentType: applicationJSONContentType,
 			},
 		},
 		{
 			name: "пустое тело запроса",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil)
-				request.Header.Set(contentType, applicationJsonContentType)
+				request.Header.Set(contentType, applicationJSONContentType)
 				return request
 			}(),
 			want: want{
 				code:               http.StatusBadRequest,
-				requestContentType: applicationJsonContentType,
+				requestContentType: applicationJSONContentType,
 			},
 		},
 		{
 			name: "ошибка ковертации",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader("http://ya.ru"))
-				request.Header.Set(contentType, applicationJsonContentType)
+				request.Header.Set(contentType, applicationJSONContentType)
 				return request
 			}(),
 			want: want{
 				code:                http.StatusBadRequest,
-				requestContentType:  applicationJsonContentType,
-				responseContentType: applicationJsonContentType,
+				requestContentType:  applicationJSONContentType,
+				responseContentType: applicationJSONContentType,
 			},
 		},
 		{
 			name: "валидный запрос",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", bytes.NewBuffer(reqBody))
-				request.Header.Set(contentType, applicationJsonContentType)
+				request.Header.Set(contentType, applicationJSONContentType)
 				return request
 			}(),
 			want: want{
 				code:                http.StatusCreated,
-				requestContentType:  applicationJsonContentType,
-				responseContentType: applicationJsonContentType,
+				requestContentType:  applicationJSONContentType,
+				responseContentType: applicationJSONContentType,
 			},
 		},
 	}

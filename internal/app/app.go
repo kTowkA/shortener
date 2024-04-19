@@ -17,7 +17,7 @@ import (
 
 const (
 	plainTextContentType       = "text/plain"
-	applicationJsonContentType = "application/json"
+	applicationJSONContentType = "application/json"
 	contentType                = "content-type"
 
 	// attems количество попыток генерации
