@@ -18,7 +18,10 @@ import (
 const (
 	plainTextContentType       = "text/plain"
 	applicationJSONContentType = "application/json"
+	textHTMLContentType        = "text/html"
 	contentType                = "content-type"
+	contentEncoding            = "content-encoding"
+	acceptEncoding             = "accept-encoding"
 
 	// attems количество попыток генерации
 	attems = 10
@@ -51,7 +54,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 func (s *Server) ListenAndServe() error {
 	mux := chi.NewRouter()
 
-	mux.Use(withLog)
+	mux.Use(withLog, withGZIP)
 
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)
