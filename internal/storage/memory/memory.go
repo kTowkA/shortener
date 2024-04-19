@@ -41,7 +41,6 @@ func NewStorage(storageFile string) (*Storage, error) {
 	}, nil
 }
 func (s *Storage) Close() error {
-	// return s.file.Close()
 	return nil
 }
 func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
