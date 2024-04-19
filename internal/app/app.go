@@ -49,6 +49,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("запуск сервера. %w", err)
 	}
+	defer storage.Close()
 	return &Server{
 		Config: cfg,
 		db:     storage,

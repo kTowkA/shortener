@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/kTowkA/shortener/internal/logger"
@@ -17,7 +17,7 @@ import (
 type Storage struct {
 	pairs map[string]string
 	sync.Mutex
-	file *os.File
+	storageFile string
 }
 
 func NewStorage(storageFile string) (*Storage, error) {
@@ -34,18 +34,15 @@ func NewStorage(storageFile string) (*Storage, error) {
 	if links == nil {
 		links = make(map[string]string)
 	}
-	file, err := os.OpenFile(storageFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, fmt.Errorf("создание хранилища. %w", err)
-	}
 	return &Storage{
-		pairs: links,
-		Mutex: sync.Mutex{},
-		file:  file,
+		pairs:       links,
+		Mutex:       sync.Mutex{},
+		storageFile: storageFile,
 	}, nil
 }
 func (s *Storage) Close() error {
-	return s.file.Close()
+	// return s.file.Close()
+	return nil
 }
 func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 	s.Mutex.Lock()
@@ -54,6 +51,14 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 		return storage.ErrURLIsExist
 	}
 	s.pairs[short] = real
+	if s.storageFile == "" {
+		return nil
+	}
+	file, err := os.OpenFile(s.storageFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("сохранение в файл. %w", err)
+	}
+	defer file.Close()
 	element := model.StorageJSON{
 		UUID:        "",
 		ShortURL:    short,
@@ -63,11 +68,11 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 	if err != nil {
 		return fmt.Errorf("сохранение елемента в файле. %w", err)
 	}
-	_, err = s.file.Write(body)
+	_, err = file.Write(body)
 	if err != nil {
 		return fmt.Errorf("сохранение елемента в файле. %w", err)
 	}
-	_, err = s.file.Write([]byte("\n"))
+	_, err = file.Write([]byte("\n"))
 	if err != nil {
 		return fmt.Errorf("сохранение елемента в файле. %w", err)
 	}
@@ -85,7 +90,9 @@ func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
 
 func restoreFromFile(filename string) (map[string]string, error) {
 	file, err := os.Open(filename)
-	if errors.Is(err, os.ErrNotExist) {
+	logger.Log.Info(err)
+	// if errors.Is(err, os.ErrNotExist) {
+	if err != nil && strings.Contains(err.Error(), "no such file or directory") {
 		return nil, nil
 	}
 	if err != nil {
