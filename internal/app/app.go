@@ -45,18 +45,20 @@ type Server struct {
 func NewServer(cfg config.Config) (*Server, error) {
 	logger.Init(os.Stdout, logger.LevelFromString(cfg.LogLevel))
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
-	storage, err := memory.NewStorage(cfg.FileStoragePath)
-	if err != nil {
-		return nil, fmt.Errorf("запуск сервера. %w", err)
-	}
-	defer storage.Close()
 	return &Server{
 		Config: cfg,
-		db:     storage,
+		db:     nil,
 	}, nil
 }
 
 func (s *Server) ListenAndServe() error {
+	storage, err := memory.NewStorage(s.Config.FileStoragePath)
+	if err != nil {
+		return fmt.Errorf("запуск сервера. %w", err)
+	}
+	defer storage.Close()
+	s.db = storage
+
 	mux := chi.NewRouter()
 
 	mux.Use(withLog, withGZIP)
