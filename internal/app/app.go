@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -44,9 +45,13 @@ type Server struct {
 func NewServer(cfg config.Config) (*Server, error) {
 	logger.Init(os.Stdout, logger.LevelFromString(cfg.LogLevel))
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
+	storage, err := memory.NewStorage(cfg.FileStoragePath)
+	if err != nil {
+		return nil, fmt.Errorf("запуск сервера. %w", err)
+	}
 	return &Server{
 		Config: cfg,
-		db:     memory.NewStorage(),
+		db:     storage,
 	}, nil
 }
 
