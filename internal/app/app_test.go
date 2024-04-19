@@ -12,6 +12,7 @@ import (
 
 	"github.com/kTowkA/shortener/internal/config"
 	"github.com/kTowkA/shortener/internal/model"
+	"github.com/kTowkA/shortener/internal/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,9 +30,10 @@ var (
 func TestPost(t *testing.T) {
 
 	s, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("Создание сервера. %v", err)
-	}
+	require.NoError(t, err)
+	storage, err := memory.NewStorage("")
+	require.NoError(t, err)
+	s.db = storage
 
 	type want struct {
 		code        int

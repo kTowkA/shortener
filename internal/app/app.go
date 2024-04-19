@@ -45,9 +45,14 @@ type Server struct {
 func NewServer(cfg config.Config) (*Server, error) {
 	logger.Init(os.Stdout, logger.LevelFromString(cfg.LogLevel))
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
+	// не должно так быть, хранилище инициализируется при запуске ниже, но без этого не проходят тесты
+	storage, err := memory.NewStorage("")
+	if err != nil {
+		return nil, fmt.Errorf("создание сервера. %w", err)
+	}
 	return &Server{
 		Config: cfg,
-		db:     nil,
+		db:     storage,
 	}, nil
 }
 
