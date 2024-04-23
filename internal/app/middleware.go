@@ -95,7 +95,7 @@ func withGZIP(h http.Handler) http.Handler {
 	zfunc := func(w http.ResponseWriter, r *http.Request) {
 		newWriter := w
 
-		if strings.Contains(r.Header.Get("accept-encoding"), "gzip") && (strings.Contains(r.Header.Get("content-type"), "text/html") || strings.Contains(r.Header.Get("content-type"), "application/json")) {
+		if gzipValidContenType(r.Header) {
 			cw := &gzipWriter{
 				orig: w,
 				gzw:  gzip.NewWriter(w),
@@ -123,4 +123,20 @@ func withGZIP(h http.Handler) http.Handler {
 		h.ServeHTTP(newWriter, r)
 	}
 	return http.HandlerFunc(zfunc)
+}
+
+func gzipValidContenType(header http.Header) bool {
+	validContentType := []string{
+		"text/html",
+		"application/json",
+	}
+	if !strings.Contains(header.Get("accept-encoding"), "gzip") {
+		return false
+	}
+	for _, ct := range validContentType {
+		if strings.Contains(header.Get("content-type"), ct) {
+			return true
+		}
+	}
+	return false
 }
