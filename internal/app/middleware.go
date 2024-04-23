@@ -95,7 +95,7 @@ func withGZIP(h http.Handler) http.Handler {
 	zfunc := func(w http.ResponseWriter, r *http.Request) {
 		newWriter := w
 
-		if strings.Contains(r.Header.Get(acceptEncoding), "gzip") && (strings.Contains(contentType, textHTMLContentType) || strings.Contains(contentType, applicationJSONContentType)) {
+		if strings.Contains(r.Header.Get("accept-encoding"), "gzip") && (strings.Contains(r.Header.Get("content-type"), "text/html") || strings.Contains(r.Header.Get("content-type"), "application/json")) {
 			cw := &gzipWriter{
 				orig: w,
 				gzw:  gzip.NewWriter(w),
@@ -105,7 +105,7 @@ func withGZIP(h http.Handler) http.Handler {
 			defer cw.gzw.Close()
 		}
 
-		if strings.Contains(r.Header.Get(contentEncoding), "gzip") {
+		if strings.Contains(r.Header.Get("content-encoding"), "gzip") {
 			// оборачиваем тело запроса в io.Reader с поддержкой декомпрессии
 			rzip, err := gzip.NewReader(r.Body)
 			if err != nil {

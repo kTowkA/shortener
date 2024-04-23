@@ -15,13 +15,6 @@ import (
 )
 
 const (
-	plainTextContentType       = "text/plain"
-	applicationJSONContentType = "application/json"
-	textHTMLContentType        = "text/html"
-	applicationXGZIP           = "application/x-gzip"
-	contentType                = "content-type"
-	contentEncoding            = "content-encoding"
-	acceptEncoding             = "accept-encoding"
 
 	// attems количество попыток генерации
 	attems = 10
@@ -43,7 +36,7 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config) (*Server, error) {
-	logger.Init(os.Stdout, logger.LevelFromString(cfg.LogLevel))
+	logger.New(os.Stdout, logger.LevelFromString(cfg.LogLevel))
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
 	// не должно так быть, хранилище инициализируется при запуске ниже, но без этого не проходят тесты
 	storage, err := memory.NewStorage("")

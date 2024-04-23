@@ -45,54 +45,47 @@ func TestPost(t *testing.T) {
 		want    want
 	}{
 		{
-			name:    "неправильный метод",
-			request: *httptest.NewRequest(http.MethodGet, "http://localhost", nil),
-			want: want{
-				code: http.StatusMethodNotAllowed,
-			},
-		},
-		{
 			name:    "неправильный content-type",
 			request: *httptest.NewRequest(http.MethodPost, "http://localhost", nil),
 			want: want{
 				code:        http.StatusBadRequest,
-				contentType: plainTextContentType,
+				contentType: "text/plain",
 			},
 		},
 		{
 			name: "пустое тело запроса 1",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost", nil)
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
 				code:        http.StatusBadRequest,
-				contentType: plainTextContentType,
+				contentType: "text/plain",
 			},
 		},
 		{
 			name: "пустое тело запроса 2",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader(""))
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
 				code:        http.StatusBadRequest,
-				contentType: plainTextContentType,
+				contentType: "text/plain",
 			},
 		},
 		{
 			name: "валидный запрос",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader("http://ya.ru"))
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
 				code:        http.StatusCreated,
-				contentType: plainTextContentType,
+				contentType: "text/plain",
 			},
 		},
 	}
@@ -123,7 +116,7 @@ func TestGet(t *testing.T) {
 
 	// создаем короткую ссылку
 	r := httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader("http://ya.ru"))
-	r.Header.Set(contentType, plainTextContentType)
+	r.Header.Set("content-type", "text/plain")
 	w := httptest.NewRecorder()
 	s.encodeURL(w, r)
 	response := w.Result()
@@ -147,17 +140,10 @@ func TestGet(t *testing.T) {
 		want    want
 	}{
 		{
-			name:    "неправильный метод",
-			request: *httptest.NewRequest(http.MethodPost, "http://localhost/", nil),
-			want: want{
-				code: http.StatusMethodNotAllowed,
-			},
-		},
-		{
 			name: "нет части path",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
@@ -169,7 +155,7 @@ func TestGet(t *testing.T) {
 			name: "404",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodGet, "http://localhost/404", nil)
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
@@ -181,7 +167,7 @@ func TestGet(t *testing.T) {
 			name: "успех 1",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodGet, fullLinkShort, nil)
-				request.Header.Set(contentType, plainTextContentType)
+				request.Header.Set("content-type", "text/plain")
 				return request
 			}(),
 			want: want{
@@ -230,56 +216,49 @@ func TestAPIShorten(t *testing.T) {
 		want    want
 	}{
 		{
-			name:    "неправильный метод",
-			request: *httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/shorten", nil),
-			want: want{
-				code: http.StatusMethodNotAllowed,
-			},
-		},
-		{
 			name:    "неправильный content-type",
 			request: *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil),
 			want: want{
 				code:               http.StatusBadRequest,
-				requestContentType: applicationJSONContentType,
+				requestContentType: "application/json",
 			},
 		},
 		{
 			name: "пустое тело запроса",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil)
-				request.Header.Set(contentType, applicationJSONContentType)
+				request.Header.Set("content-type", "application/json")
 				return request
 			}(),
 			want: want{
 				code:               http.StatusBadRequest,
-				requestContentType: applicationJSONContentType,
+				requestContentType: "application/json",
 			},
 		},
 		{
 			name: "ошибка ковертации",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader("http://ya.ru"))
-				request.Header.Set(contentType, applicationJSONContentType)
+				request.Header.Set("content-type", "application/json")
 				return request
 			}(),
 			want: want{
 				code:                http.StatusBadRequest,
-				requestContentType:  applicationJSONContentType,
-				responseContentType: applicationJSONContentType,
+				requestContentType:  "application/json",
+				responseContentType: "application/json",
 			},
 		},
 		{
 			name: "валидный запрос",
 			request: func() http.Request {
 				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", bytes.NewBuffer(reqBody))
-				request.Header.Set(contentType, applicationJSONContentType)
+				request.Header.Set("content-type", "application/json")
 				return request
 			}(),
 			want: want{
 				code:                http.StatusCreated,
-				requestContentType:  applicationJSONContentType,
-				responseContentType: applicationJSONContentType,
+				requestContentType:  "application/json",
+				responseContentType: "application/json",
 			},
 		},
 	}
@@ -294,9 +273,7 @@ func TestAPIShorten(t *testing.T) {
 			assert.Equal(t, test.want.code, response.StatusCode)
 			link, err := io.ReadAll(response.Body)
 			require.NoError(t, err)
-			if string(link) != "" {
-				t.Logf("переданная ссылка: %s. короткая ссылка: %s", "", string(link))
-			}
+			t.Logf("переданная ссылка: %s. короткая ссылка: %s", "", string(link))
 			err = response.Body.Close()
 			require.NoError(t, err)
 		})

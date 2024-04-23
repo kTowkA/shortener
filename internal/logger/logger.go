@@ -8,7 +8,7 @@ import (
 
 var Log *logrus.Logger
 
-func Init(output io.Writer, level logrus.Level) {
+func New(output io.Writer, level logrus.Level) {
 	Log = logrus.New()
 	Log.SetFormatter(&logrus.TextFormatter{})
 	Log.SetOutput(output)

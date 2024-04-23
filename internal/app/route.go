@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -19,41 +20,37 @@ import (
 
 // encodeURL обработчик для кодирования входящего урла
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
-	// проверяем что метод валиден
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get(contentType), plainTextContentType) && !strings.HasPrefix(r.Header.Get(contentType), applicationXGZIP) {
-		w.WriteHeader(http.StatusBadRequest)
+	if !strings.HasPrefix(r.Header.Get("content-type"), "text/plain") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"text/plain", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
 
 	// проверяем, что тело существует
 	if r.Body == nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
 
 	// читаем тело
 	link, err := bufio.NewReader(r.Body).ReadString('\n')
 	if err != nil && err != io.EOF {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer r.Body.Close()
 	link = strings.TrimSpace(link)
 
 	// проверяем, что запрос не пуст
 	if link == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
 	// проверяем, что это ссылка
 	_, err = url.ParseRequestURI(link)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
 		return
 	}
 	newLink, err := s.saveLink(r.Context(), link, attems)
@@ -61,30 +58,25 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set(contentType, plainTextContentType)
+	w.Header().Set("content-type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(newLink))
 }
 
 // decodeURL обработчик для декодирования короткой ссылки
 func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
-	// проверяем что метод валиден
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 
 	// проверяем что есть подзапрос
 	short := strings.Trim(r.URL.Path, "/")
 	if short == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "пустой подзапрос", http.StatusBadRequest)
 		return
 	}
 
-	real, err := s.db.RealURL(context.Background(), short)
+	real, err := s.db.RealURL(r.Context(), short)
 	// ничего не нашли
 	if errors.Is(err, storage.ErrURLNotFound) {
-		http.NotFound(w, r)
+		http.Error(w, storage.ErrURLNotFound.Error(), http.StatusNotFound)
 		return
 	} else if err != nil {
 		// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
@@ -99,21 +91,16 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 
 // apiShorten обработчик для API
 func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
-	// проверяем что метод валиден
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get(contentType), applicationJSONContentType) && !strings.HasPrefix(r.Header.Get(contentType), applicationXGZIP) {
-		w.WriteHeader(http.StatusBadRequest)
+	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
 
 	// проверяем, что тело существует
 	if r.Body == nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
 
@@ -121,7 +108,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	req := model.RequestShortURL{}
@@ -149,8 +136,8 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get(contentType) == "" {
-		w.Header().Set(contentType, applicationJSONContentType)
+	if w.Header().Get("content-type") == "" {
+		w.Header().Set("content-type", "application/json")
 	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
