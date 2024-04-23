@@ -65,15 +65,15 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 	}
 	body, err := json.Marshal(element)
 	if err != nil {
-		return fmt.Errorf("сохранение елемента в файле. %w", err)
+		return fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
 	_, err = file.Write(body)
 	if err != nil {
-		return fmt.Errorf("сохранение елемента в файле. %w", err)
+		return fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
 	_, err = file.Write([]byte("\n"))
 	if err != nil {
-		return fmt.Errorf("сохранение елемента в файле. %w", err)
+		return fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
 	return nil
 }

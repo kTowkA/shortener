@@ -56,7 +56,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	newLink, err := s.saveLink(link, attems)
+	newLink, err := s.saveLink(r.Context(), link, attems)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -136,7 +136,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	// 	return
 	// }
 
-	newLink, err := s.saveLink(req.URL, attems)
+	newLink, err := s.saveLink(r.Context(), req.URL, attems)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -156,7 +156,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-func (s *Server) saveLink(link string, attems int) (string, error) {
+func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
 		genLink, err := generate(defaultLenght)
@@ -164,7 +164,7 @@ func (s *Server) saveLink(link string, attems int) (string, error) {
 			return "", err
 		}
 
-		err = s.db.SaveURL(context.Background(), link, genLink)
+		err = s.db.SaveURL(ctx, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
 			continue
