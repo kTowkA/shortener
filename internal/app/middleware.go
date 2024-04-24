@@ -61,8 +61,8 @@ func withLog(h http.Handler) http.Handler {
 
 type (
 	gzipWriter struct {
-		orig http.ResponseWriter
-		gzw  *gzip.Writer
+		http.ResponseWriter
+		gzw *gzip.Writer
 	}
 	gzipReader struct {
 		orig io.ReadCloser
@@ -70,12 +70,6 @@ type (
 	}
 )
 
-func (gzw *gzipWriter) Header() http.Header {
-	return gzw.orig.Header()
-}
-func (gzw *gzipWriter) WriteHeader(statusCode int) {
-	gzw.orig.WriteHeader(statusCode)
-}
 func (gzw *gzipWriter) Write(p []byte) (int, error) {
 	return gzw.gzw.Write(p)
 }
@@ -97,8 +91,8 @@ func withGZIP(h http.Handler) http.Handler {
 
 		if gzipValidContenType(r.Header) {
 			cw := &gzipWriter{
-				orig: w,
-				gzw:  gzip.NewWriter(w),
+				ResponseWriter: w,
+				gzw:            gzip.NewWriter(w),
 			}
 			newWriter = cw
 			cw.Header().Set("Content-Encoding", "gzip")
