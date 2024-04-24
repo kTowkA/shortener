@@ -119,12 +119,12 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	// if req.URL != "" {
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	return
-	// }
-
+	// проверяем, что это ссылка
+	_, err = url.ParseRequestURI(req.URL)
+	if err != nil {
+		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
+		return
+	}
 	newLink, err := s.saveLink(r.Context(), req.URL, attems)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

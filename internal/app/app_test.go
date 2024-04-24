@@ -1,24 +1,19 @@
 package app
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/kTowkA/shortener/internal/config"
-	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage/memory"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
 var (
-	defaultAddress     = "localhost:8080"
+	defaultAddress     = "http://localhost:8080"
 	defaultBaseAddress = "http://localhost:8080"
 
 	cfg = config.Config{
@@ -27,255 +22,244 @@ var (
 	}
 )
 
-func TestPost(t *testing.T) {
-
-	s, err := NewServer(cfg)
-	require.NoError(t, err)
-	storage, err := memory.NewStorage("")
-	require.NoError(t, err)
-	s.db = storage
-
-	type want struct {
-		code        int
-		contentType string
-	}
-	tests := []struct {
-		name    string
-		request http.Request
-		want    want
-	}{
-		{
-			name:    "неправильный content-type",
-			request: *httptest.NewRequest(http.MethodPost, "http://localhost", nil),
-			want: want{
-				code:        http.StatusBadRequest,
-				contentType: "text/plain",
-			},
-		},
-		{
-			name: "пустое тело запроса 1",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost", nil)
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusBadRequest,
-				contentType: "text/plain",
-			},
-		},
-		{
-			name: "пустое тело запроса 2",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader(""))
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusBadRequest,
-				contentType: "text/plain",
-			},
-		},
-		{
-			name: "валидный запрос",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader("http://ya.ru"))
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusCreated,
-				contentType: "text/plain",
-			},
-		},
+type (
+	header struct {
+		key   string
+		value string
 	}
 
-	for _, test := range tests {
-
-		t.Run(test.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			s.encodeURL(w, &test.request)
-			response := w.Result()
-			assert.Equal(t, test.want.code, response.StatusCode)
-			link, err := io.ReadAll(response.Body)
-			require.NoError(t, err)
-			if string(link) != "" {
-				t.Logf("переданная ссылка: %s. короткая ссылка: %s", "", string(link))
-			}
-			err = response.Body.Close()
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestGet(t *testing.T) {
-	s, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("Создание сервера. %v", err)
-	}
-
-	// создаем короткую ссылку
-	r := httptest.NewRequest(http.MethodPost, "http://localhost", strings.NewReader("http://ya.ru"))
-	r.Header.Set("content-type", "text/plain")
-	w := httptest.NewRecorder()
-	s.encodeURL(w, r)
-	response := w.Result()
-	require.Equal(t, http.StatusCreated, response.StatusCode)
-	body, err := io.ReadAll(response.Body)
-	require.NoError(t, err)
-	err = response.Body.Close()
-	require.NoError(t, err)
-	fullLinkShort := string(body)
-	sl := strings.Split(fullLinkShort, "/")
-	linkShort := sl[len(sl)-1]
-	log.Println("full", fullLinkShort, "short", linkShort)
-	type want struct {
+	wantResponse struct {
 		code        int
 		contentType string
 		location    string
 	}
-	tests := []struct {
+	want struct {
+		response wantResponse
+	}
+	test struct {
 		name    string
-		request http.Request
+		request *http.Request
 		want    want
-	}{
-		{
-			name: "нет части path",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodGet, "http://localhost/", nil)
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusBadRequest,
-				contentType: "",
-			},
-		},
-		{
-			name: "404",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodGet, "http://localhost/404", nil)
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusNotFound,
-				contentType: "",
-			},
-		},
-		{
-			name: "успех 1",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodGet, fullLinkShort, nil)
-				request.Header.Set("content-type", "text/plain")
-				return request
-			}(),
-			want: want{
-				code:        http.StatusTemporaryRedirect,
-				contentType: "",
-				location:    "http://ya.ru",
-			},
-		},
 	}
+	appTestSuite struct {
+		suite.Suite
+		server *Server
+		tests  map[string][]test
+	}
+)
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			s.decodeURL(w, &test.request)
-			response := w.Result()
-			assert.Equal(t, test.want.code, response.StatusCode)
-			assert.Equal(t, test.want.location, response.Header.Get("Location"))
-			err = response.Body.Close()
-			require.NoError(t, err)
-			// assert.Equal(t, test.want.contentType, response.Header.Get("content-type"))
-		})
-	}
+func (suite *appTestSuite) SetupSuite() {
+	suite.Suite.T().Log("Suite setup")
+
+	s, err := NewServer(cfg)
+	suite.NoError(err)
+
+	storage, err := memory.NewStorage("")
+	suite.NoError(err)
+	s.db = storage
+
+	suite.tests = make(map[string][]test)
+	suite.server = s
 }
 
-func TestAPIShorten(t *testing.T) {
-
-	reqGo := model.RequestShortURL{
-		URL: "http://ya.ru",
+func (suite *appTestSuite) SetupTest() {
+	suite.tests["post"] = []test{
+		{
+			name:    "неправильный content-type в запросе, валидный url",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("https://www.sobyte.net/post/2023-07/testify/"), header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, пустое тело запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, nil, header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, пустая строка в теле запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(""), header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, невалидный url в теле запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("w.sobyte.net/post/2023-07/testify/"), header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, валидный url в теле запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("https://www.sobyte.net/post/2023-07/testify/"), header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusCreated,
+				},
+			},
+		},
 	}
-	reqBody, err := json.Marshal(reqGo)
-	require.NoError(t, err)
-	s, err := NewServer(cfg)
-	require.NoError(t, err, "Создание сервера")
-
-	type (
-		want struct {
-			code                int
-			requestContentType  string
-			responseContentType string
-		}
+	suite.tests["api shorten"] = []test{
+		{
+			name:    "неправильный content-type в запросе, валидный url",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, пустое тело запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, nil, header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, ошибка в теле",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{url: "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, невалидный url",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "ww.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, валидный url",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusCreated,
+				},
+			},
+		},
+	}
+	suite.tests["get"] = []test{
+		{
+			name:    "пустой подзапрос",
+			request: createTestRequest(http.MethodGet, defaultAddress, nil, header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusBadRequest,
+				},
+			},
+		},
+		{
+			name:    "подзапрос существует, но в БД такой записи нет",
+			request: createTestRequest(http.MethodGet, defaultAddress+"/1234567890", nil, header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusNotFound,
+				},
+			},
+		},
+		{
+			name:    "подзапрос существует, в БД запись есть",
+			request: createTestRequest(http.MethodGet, defaultAddress+"/1234567890", nil, header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusTemporaryRedirect,
+				},
+			},
+		},
+	}
+}
+func (suite *appTestSuite) SetupSubTest() {
+	// создадим валидную ссылку
+	w := httptest.NewRecorder()
+	suite.server.encodeURL(
+		w,
+		createTestRequest(
+			http.MethodPost,
+			defaultAddress,
+			strings.NewReader("https://www.sobyte.net/post/2023-07/testify/"),
+			header{"content-type", "text/plain"},
+		),
 	)
-
-	tests := []struct {
-		name    string
-		request http.Request
-		want    want
-	}{
-		{
-			name:    "неправильный content-type",
-			request: *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil),
-			want: want{
-				code:               http.StatusBadRequest,
-				requestContentType: "application/json",
-			},
-		},
-		{
-			name: "пустое тело запроса",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", nil)
-				request.Header.Set("content-type", "application/json")
-				return request
-			}(),
-			want: want{
-				code:               http.StatusBadRequest,
-				requestContentType: "application/json",
-			},
-		},
-		{
-			name: "ошибка ковертации",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader("http://ya.ru"))
-				request.Header.Set("content-type", "application/json")
-				return request
-			}(),
-			want: want{
-				code:                http.StatusBadRequest,
-				requestContentType:  "application/json",
-				responseContentType: "application/json",
-			},
-		},
-		{
-			name: "валидный запрос",
-			request: func() http.Request {
-				request := *httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", bytes.NewBuffer(reqBody))
-				request.Header.Set("content-type", "application/json")
-				return request
-			}(),
-			want: want{
-				code:                http.StatusCreated,
-				requestContentType:  "application/json",
-				responseContentType: "application/json",
-			},
-		},
+	response := w.Result()
+	suite.Require().Equal(http.StatusCreated, response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	suite.Require().NoError(err)
+	err = response.Body.Close()
+	suite.NoError(err)
+	generatedLink := string(body)
+	// здесь может быть странный кусок. Вначале мы не знаем какая ссылка будет (при настройке теста)
+	// вначале мы сохраняем ссылку в бд
+	// а потом меняем запросы в тестах везде где ожидаем правильный ответ
+	for i := range suite.tests["get"] {
+		if suite.tests["get"][i].want.response.code != http.StatusTemporaryRedirect {
+			continue
+		}
+		suite.tests["get"][i].request = createTestRequest(http.MethodGet, generatedLink, nil, header{"content-type", "text/plain"})
 	}
-
-	for _, test := range tests {
-
-		t.Run(test.name, func(t *testing.T) {
+}
+func (suite *appTestSuite) TestCaseGet() {
+	suite.Run("case get", func() {
+		for _, subt := range suite.tests["get"] {
 			w := httptest.NewRecorder()
-			s.apiShorten(w, &test.request)
-			// s.encodeURL(w, &test.request)
+			suite.server.decodeURL(w, subt.request)
 			response := w.Result()
-			assert.Equal(t, test.want.code, response.StatusCode)
-			link, err := io.ReadAll(response.Body)
-			require.NoError(t, err)
-			t.Logf("переданная ссылка: %s. короткая ссылка: %s", "", string(link))
-			err = response.Body.Close()
-			require.NoError(t, err)
-		})
+			suite.Equal(subt.want.response.code, response.StatusCode)
+			err := response.Body.Close()
+			suite.NoError(err)
+		}
+	})
+}
+func (suite *appTestSuite) TestCasePost() {
+	suite.Run("case post", func() {
+		for _, subt := range suite.tests["post"] {
+			w := httptest.NewRecorder()
+			suite.server.encodeURL(w, subt.request)
+			response := w.Result()
+			suite.Equal(subt.want.response.code, response.StatusCode)
+			err := response.Body.Close()
+			suite.NoError(err)
+		}
+	})
+}
+func (suite *appTestSuite) TestCaseAPIShorten() {
+	suite.Run("case api shorten", func() {
+		for _, subt := range suite.tests["api shorten"] {
+			w := httptest.NewRecorder()
+			suite.server.apiShorten(w, subt.request)
+			response := w.Result()
+			suite.Equal(subt.want.response.code, response.StatusCode)
+			err := response.Body.Close()
+			suite.NoError(err)
+		}
+	})
+}
+func TestAppTestSuite(t *testing.T) {
+	suite.Run(t, new(appTestSuite))
+}
+
+func createTestRequest(method, target string, body io.Reader, headers ...header) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	for _, h := range headers {
+		req.Header.Set(h.key, h.value)
 	}
+	return req
 }
