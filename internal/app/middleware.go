@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/kTowkA/shortener/internal/logger"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 type responseData struct {
@@ -46,14 +46,14 @@ func withLog(h http.Handler) http.Handler {
 		h.ServeHTTP(&lw, r)
 
 		duration := time.Since(start)
-
-		logger.Log.WithFields(logrus.Fields{
-			"uri":        r.RequestURI,
-			"http метод": r.Method,
-			"длительность запроса": duration,
-			"статус":        lw.responseData.status,
-			"размер ответа": lw.responseData.size,
-		}).Info("входящий запрос")
+		logger.Log.Info(
+			"входящий запрос",
+			zap.String("uri", r.RequestURI),
+			zap.String("http метод", r.Method),
+			zap.Duration("длительность запроса", duration),
+			zap.Int("статус", lw.responseData.status),
+			zap.Int("размер ответа", lw.responseData.size),
+		)
 	}
 
 	return http.HandlerFunc(logFn)

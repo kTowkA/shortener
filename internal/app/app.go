@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -11,7 +10,8 @@ import (
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
-	"github.com/sirupsen/logrus"
+	_ "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 const (
@@ -36,7 +36,10 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config) (*Server, error) {
-	logger.New(os.Stdout, logger.LevelFromString(cfg.LogLevel))
+	err := logger.New(logger.LevelFromString(cfg.LogLevel))
+	if err != nil {
+		return nil, fmt.Errorf("создание сервера. %w", err)
+	}
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
 	// не должно так быть, хранилище инициализируется при запуске ниже, но без этого не проходят тесты
 	storage, err := memory.NewStorage("")
@@ -69,8 +72,6 @@ func (s *Server) ListenAndServe() error {
 		})
 	})
 
-	logger.Log.WithFields(logrus.Fields{
-		"адрес": s.Config.Address,
-	}).Info("запуск сервера")
+	logger.Log.Info("запуск сервера", zap.String("адрес", s.Config.Address))
 	return http.ListenAndServe(s.Config.Address, mux)
 }

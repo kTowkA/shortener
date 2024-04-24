@@ -1,37 +1,38 @@
 package logger
 
 import (
-	"io"
-
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-var Log *logrus.Logger
+var Log *zap.Logger = zap.NewNop()
 
-func New(output io.Writer, level logrus.Level) {
-	Log = logrus.New()
-	Log.SetFormatter(&logrus.TextFormatter{})
-	Log.SetOutput(output)
-	Log.SetLevel(level)
+func New(level zapcore.Level) error {
+	cfg := zap.NewProductionConfig()
+	cfg.Level.SetLevel(level)
+	zl, err := cfg.Build()
+	if err != nil {
+		return err
+	}
+	Log = zl
+	return nil
 }
 
-func LevelFromString(level string) logrus.Level {
+func LevelFromString(level string) zapcore.Level {
 	switch level {
 	case "panic":
-		return logrus.PanicLevel
+		return zapcore.PanicLevel
 	case "fatal":
-		return logrus.FatalLevel
+		return zapcore.FatalLevel
 	case "error":
-		return logrus.ErrorLevel
+		return zapcore.ErrorLevel
 	case "warn":
-		return logrus.WarnLevel
+		return zapcore.WarnLevel
 	case "info":
-		return logrus.InfoLevel
+		return zapcore.InfoLevel
 	case "debug":
-		return logrus.DebugLevel
-	case "trace":
-		return logrus.TraceLevel
+		return zapcore.DebugLevel
 	default:
-		return logrus.InfoLevel
+		return zapcore.InfoLevel
 	}
 }

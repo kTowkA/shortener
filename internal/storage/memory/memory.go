@@ -12,6 +12,7 @@ import (
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
+	"go.uber.org/zap"
 )
 
 type Storage struct {
@@ -89,7 +90,6 @@ func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
 
 func restoreFromFile(filename string) (map[string]string, error) {
 	file, err := os.Open(filename)
-	logger.Log.Info(err)
 	// if errors.Is(err, os.ErrNotExist) {
 	if err != nil && strings.Contains(err.Error(), "no such file or directory") {
 		return nil, nil
@@ -107,7 +107,7 @@ func restoreFromFile(filename string) (map[string]string, error) {
 		element := model.StorageJSON{}
 		err = json.Unmarshal(raw, &element)
 		if err != nil {
-			logger.Log.Error("раскодирование элемента", "ошибка", err)
+			logger.Log.Error("раскодирование элемента", zap.Error(err))
 			continue
 		}
 		elements[element.ShortURL] = element.OriginalURL
