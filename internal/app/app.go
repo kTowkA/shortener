@@ -21,13 +21,6 @@ const (
 
 	// defaultLenght длина по умолчанию
 	defaultLenght = 7
-
-	// avalChars доступные символы для генерации
-	avalChars = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM"
-)
-
-var (
-	generateChars = strings.Split(avalChars, "")
 )
 
 type Server struct {

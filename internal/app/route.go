@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,16 +146,18 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {
+	const forUnique = "X"
+	genLink, err := generateSHA1(link, defaultLenght)
+	if err != nil {
+		return "", err
+	}
+
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
-		genLink, err := generate(defaultLenght)
-		if err != nil {
-			return "", err
-		}
-
 		err = s.db.SaveURL(ctx, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
+			genLink = genLink + forUnique
 			continue
 		} else if err != nil {
 			// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
@@ -168,18 +172,26 @@ func (s *Server) saveLink(ctx context.Context, link string, attems int) (string,
 	return "", errors.New("не смогли создать короткую ссылку")
 }
 
-// generate генерируем случайную строку
-func generate(lenght int) (string, error) {
+func generateSHA1(original string, lenght int) (string, error) {
+	// получаем sha1
+	sum := sha1.Sum([]byte(original))
+
+	// получаем массив символов длиной lenght
+	symbols := strings.Split(hex.EncodeToString(sum[:]), "")[:lenght]
+
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	b := strings.Builder{}
-	b.Grow(lenght)
-
-	for i := 0; i < lenght; i++ {
-		_, err := b.WriteString(generateChars[r.Intn(len(generateChars))])
+	// тут случайный символ переводим в верхней регистр (чтобы избежать совпадений)
+	result := strings.Builder{}
+	for _, s := range symbols {
+		change := r.Intn(2)
+		if change == 1 {
+			s = strings.ToUpper(s)
+		}
+		_, err := result.WriteString(s)
 		if err != nil {
 			return "", err
 		}
 	}
-	return b.String(), nil
+	return result.String(), nil
 }
