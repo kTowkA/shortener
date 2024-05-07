@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
+	"github.com/kTowkA/shortener/internal/storage/postgres"
 	_ "github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
@@ -46,12 +48,21 @@ func NewServer(cfg config.Config) (*Server, error) {
 }
 
 func (s *Server) ListenAndServe() error {
-	storage, err := memory.NewStorage(s.Config.FileStoragePath)
+	var (
+		myStorage storage.Storager
+		err       error
+	)
+	if s.Config.DatabaseDSN != "" {
+		myStorage, err = postgres.NewStorage(context.Background(), s.Config.DatabaseDSN)
+	} else {
+		myStorage, err = memory.NewStorage(s.Config.FileStoragePath)
+	}
 	if err != nil {
 		return fmt.Errorf("запуск сервера. %w", err)
 	}
-	defer storage.Close()
-	s.db = storage
+	defer myStorage.Close()
+
+	s.db = myStorage
 
 	mux := chi.NewRouter()
 
