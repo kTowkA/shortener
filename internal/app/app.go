@@ -63,6 +63,7 @@ func (s *Server) ListenAndServe() error {
 		r.Route("/api", func(r chi.Router) {
 			r.Post("/shorten", s.apiShorten)
 		})
+		r.Get("/ping", s.ping)
 	})
 
 	logger.Log.Info("запуск сервера", zap.String("адрес", s.Config.Address))

@@ -13,5 +13,6 @@ var (
 type Storager interface {
 	SaveURL(ctx context.Context, real, short string) error
 	RealURL(ctx context.Context, short string) (string, error)
+	Ping(ctx context.Context) error
 	Close() error
 }

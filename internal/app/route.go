@@ -16,8 +16,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
+	"go.uber.org/zap"
 )
 
 // encodeURL обработчик для кодирования входящего урла
@@ -143,6 +145,16 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
+}
+
+func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
+	err := s.db.Ping(r.Context())
+	if err != nil {
+		logger.Log.Error("проверка на доступность БД", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {

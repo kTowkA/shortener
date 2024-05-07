@@ -44,6 +44,7 @@ func NewStorage(storageFile string) (*Storage, error) {
 func (s *Storage) Close() error {
 	return nil
 }
+
 func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
@@ -86,6 +87,10 @@ func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
 		return real, nil
 	}
 	return "", storage.ErrURLNotFound
+}
+
+func (s *Storage) Ping(ctx context.Context) error {
+	return nil
 }
 
 func restoreFromFile(filename string) (map[string]string, error) {

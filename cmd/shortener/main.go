@@ -13,6 +13,7 @@ var (
 	flagA               string
 	flagB               string
 	flagStorageFilePath string
+	flagDatabaseDSN     string
 	logLevel            string
 )
 
@@ -33,6 +34,7 @@ func main() {
 func configurate() (config.Config, error) {
 	flag.StringVar(&flagA, "a", "localhost:8080", "address:host")
 	flag.StringVar(&flagB, "b", "http://localhost:8080", "result address")
+	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
 	flag.StringVar(&flagStorageFilePath, "f", "/tmp/short-url-db.json", "file on disk with db")
 	flag.StringVar(&logLevel, "l", "info", "level (panic,fatal,error,warn,info,debug,trace)")
 
@@ -52,6 +54,9 @@ func configurate() (config.Config, error) {
 
 	if cfg.BaseAddress == "" {
 		cfg.BaseAddress = flagB
+	}
+	if cfg.DatabaseDSN == "" {
+		cfg.DatabaseDSN = flagDatabaseDSN
 	}
 	if cfg.FileStoragePath == "" {
 		cfg.FileStoragePath = flagStorageFilePath
