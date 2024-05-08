@@ -157,10 +157,10 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
-	} else {
-		w.WriteHeader(http.StatusCreated)
+		w.Write(resp)
+		return
 	}
-
+	w.WriteHeader(http.StatusCreated)
 	w.Write(resp)
 }
 
