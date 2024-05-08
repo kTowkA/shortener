@@ -12,7 +12,6 @@ import (
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
 	"github.com/kTowkA/shortener/internal/storage/postgres"
-	_ "github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
 
