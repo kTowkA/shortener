@@ -117,10 +117,11 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 			v.ShortURL,
 		)
 	}
-	// отправляем весь batch и не забываем закрыть
+	// отправляем весь batch
 	br := tx.SendBatch(ctx, &b)
 
-	ok := false
+	// результирующая переменная все ли было хорошо
+	ok := true
 	// заполняем результат,для этого проходим по переданным значениям и вызываем Exec у BatchResult
 	result := make([]model.BatchResponseElement, 0, len(values))
 	for _, v := range values {
@@ -129,44 +130,50 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 			CorrelationID: v.CorrelationID,
 			OriginalURL:   v.OriginalURL,
 		}
-		tc, err := br.Exec()
-		if err != nil {
-			// записываем ошибку
-			e.Error = err
-			// получаем код ошибки. мы может пытаемся записать уникальное значение в одно из нашим полей с индексом UNIQUE(original_url ИЛИ short_url)
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) {
 
-				// была попытка записать уникальное значение.и здесь у нас 2 варианта
-				if pgErr.Code == pgerrcode.UniqueViolation {
-					// мы не считаем это ошибкой и сбрасываем
-					e.Error = nil
-					if strings.Contains(err.Error(), "original_url") { //оригинальный урл. надо получить уже имеющиеся совпадение
-						// ищем ранее сохраненный url
-						short, err := p.short(ctx, v.OriginalURL)
-						if err != nil {
-							e.Error = err
-						} else {
-							e.ShortURL = short
-							e.Error = storage.ErrURLConflict
-						}
-					} else { // а в этом случае коллизия, т.е. у нас уже есть такой же ключ в колонке short_url
-						e.Collision = true
-						e.Error = storage.ErrURLIsExist
-					}
+		// смотрим как выполнилось
+		// возможные варианты:
+		// 1. была ошибка
+		// 2. ошибки не было, но строку не вставили (маловероятное, но вдруг и так быват)
+		// 3. все прошло успешно
+		tc, err := br.Exec()
+
+		switch {
+		case err != nil:
+			ok = false
+			e.Error = err
+			var pgErr *pgconn.PgError
+			// если это не внутренняя ошибка postgres, то выходим
+			if !errors.As(err, &pgErr) {
+				break
+			}
+			// если это не ошибка UniqueViolation то нам неинтересно
+			if pgErr.Code != pgerrcode.UniqueViolation {
+				break
+			}
+			if strings.Contains(err.Error(), "original_url") { //оригинальный урл. надо получить уже имеющиеся совпадение
+				// ищем ранее сохраненный url
+				short, err := p.short(ctx, v.OriginalURL)
+				if err != nil {
+					e.Error = err
+					break
 				}
+				e.ShortURL = short
+				e.Error = storage.ErrURLConflict
+			} else { // а в этом случае коллизия, т.е. у нас уже есть такой же ключ в колонке short_url
+				e.Collision = true
+				e.Error = storage.ErrURLIsExist
 			}
-		} else {
-			ok = true
-			// сюда конечно не должны попадать, но на всякий случай
-			if tc.RowsAffected() != 1 {
-				e.Error = fmt.Errorf("не было сохранено")
-			} else {
-				e.ShortURL = v.ShortURL
-			}
+		case tc.RowsAffected() != 1:
+			ok = false
+			e.Error = fmt.Errorf("не было сохранено")
+		default:
+			e.ShortURL = v.ShortURL
 		}
+
 		result = append(result, e)
 	}
+	// не забываем закрыть
 	br.Close()
 	if ok {
 		err = tx.Commit(ctx)
