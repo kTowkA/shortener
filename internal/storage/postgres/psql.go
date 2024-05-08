@@ -51,13 +51,13 @@ func (p *PStorage) bootstrap(ctx context.Context) error {
 		`,
 	)
 	if err != nil {
-		return err
+		return tx.Rollback(ctx)
 	}
 	return tx.Commit(ctx)
 }
 
 // реализация интерфейса Storager
-func (p *PStorage) SaveURL(ctx context.Context, real, short string) error {
+func (p *PStorage) SaveURL(ctx context.Context, real, short string) (string, error) {
 	resp, err := p.Batch(
 		ctx,
 		model.BatchRequest{
@@ -68,15 +68,15 @@ func (p *PStorage) SaveURL(ctx context.Context, real, short string) error {
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("добавление новой записи в БД. %w", err)
+		return "", fmt.Errorf("добавление новой записи в БД. %w", err)
 	}
 	if resp[0].Collision {
-		return storage.ErrURLIsExist
+		return "", storage.ErrURLIsExist
 	}
 	if resp[0].Error != nil {
-		return fmt.Errorf("добавление новой записи в БД. %w", err)
+		return resp[0].ShortURL, resp[0].Error
 	}
-	return nil
+	return resp[0].ShortURL, nil
 }
 func (p *PStorage) RealURL(ctx context.Context, short string) (string, error) {
 	var real string
@@ -120,6 +120,7 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 	// отправляем весь batch и не забываем закрыть
 	br := tx.SendBatch(ctx, &b)
 
+	ok := false
 	// заполняем результат,для этого проходим по переданным значениям и вызываем Exec у BatchResult
 	result := make([]model.BatchResponseElement, 0, len(values))
 	for _, v := range values {
@@ -147,6 +148,7 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 							e.Error = err
 						} else {
 							e.ShortURL = short
+							e.Error = storage.ErrURLConflict
 						}
 					} else { // а в этом случае коллизия, т.е. у нас уже есть такой же ключ в колонке short_url
 						e.Collision = true
@@ -155,6 +157,7 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 				}
 			}
 		} else {
+			ok = true
 			// сюда конечно не должны попадать, но на всякий случай
 			if tc.RowsAffected() != 1 {
 				e.Error = fmt.Errorf("не было сохранено")
@@ -165,15 +168,24 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 		result = append(result, e)
 	}
 	br.Close()
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("сохранение изменений транзакции. %w", err)
+	if ok {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("сохранение изменений транзакции. %w", err)
+		}
+	} else {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("откат изменений транзакции. %w", err)
+		}
 	}
+
 	return result, nil
 }
 
 // получить уже сохраненое значение (для исключения дублирования original_url)
 func (p *PStorage) short(ctx context.Context, real string) (string, error) {
+
 	var short string
 	err := p.QueryRow(
 		ctx,

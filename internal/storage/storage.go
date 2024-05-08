@@ -9,12 +9,13 @@ import (
 
 var (
 	ErrURLNotFound = errors.New("URL не найден")
+	ErrURLConflict = errors.New("оригинальный URL уже был добавлен")
 	ErrURLIsExist  = errors.New("такой ключ занят")
 )
 
 type Storager interface {
 	// SaveURL сохраняет пару real-short url
-	SaveURL(ctx context.Context, real, short string) error
+	SaveURL(ctx context.Context, real, short string) (string, error)
 
 	// Batch пакетное сохранение всех значений values
 	Batch(ctx context.Context, values model.BatchRequest) (model.BatchResponse, error)

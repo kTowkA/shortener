@@ -102,10 +102,19 @@ func (suite *appTestSuite) SetupTest() {
 		},
 		{
 			name:    "правильный content-type в запросе, валидный url в теле запроса",
-			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("https://www.sobyte.net/post/2023-07/testify/"), header{"content-type", "text/plain"}),
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("https://www.sobyte.net/post/2023-07/testify"), header{"content-type", "text/plain"}),
 			want: want{
 				response: wantResponse{
 					code: http.StatusCreated,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, повторяющийся url в теле запроса",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader("https://www.sobyte.net/post/2023-07/testify"), header{"content-type", "text/plain"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusConflict,
 				},
 			},
 		},
@@ -149,10 +158,19 @@ func (suite *appTestSuite) SetupTest() {
 		},
 		{
 			name:    "правильный content-type в запросе, валидный url",
-			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "application/json"}),
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/2"}`), header{"content-type", "application/json"}),
 			want: want{
 				response: wantResponse{
 					code: http.StatusCreated,
+				},
+			},
+		},
+		{
+			name:    "правильный content-type в запросе, повторяющийся url",
+			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/2"}`), header{"content-type", "application/json"}),
+			want: want{
+				response: wantResponse{
+					code: http.StatusConflict,
 				},
 			},
 		},
@@ -195,12 +213,13 @@ func (suite *appTestSuite) SetupSubTest() {
 		createTestRequest(
 			http.MethodPost,
 			defaultAddress,
-			strings.NewReader("https://www.sobyte.net/post/2023-07/testify/"),
+			strings.NewReader("https://www.sobyte.net/post/2023-07/testify/4554"),
 			header{"content-type", "text/plain"},
 		),
 	)
 	response := w.Result()
-	suite.Require().Equal(http.StatusCreated, response.StatusCode)
+	suite.Require().Contains([]int{http.StatusCreated, http.StatusConflict}, response.StatusCode)
+	// suite.Require().Equal(http.StatusCreated, response.StatusCode)
 	body, err := io.ReadAll(response.Body)
 	suite.Require().NoError(err)
 	err = response.Body.Close()

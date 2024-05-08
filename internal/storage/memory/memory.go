@@ -45,19 +45,26 @@ func (s *Storage) Close() error {
 	return nil
 }
 
-func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
+func (s *Storage) SaveURL(ctx context.Context, real, short string) (string, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 	if _, ok := s.pairs[short]; ok {
-		return storage.ErrURLIsExist
+		return "", storage.ErrURLIsExist
 	}
+	// для обратной совместимости
+	for k, v := range s.pairs {
+		if v == real {
+			return k, storage.ErrURLConflict
+		}
+	}
+
 	s.pairs[short] = real
 	if s.storageFile == "" {
-		return nil
+		return short, nil
 	}
 	file, err := os.OpenFile(s.storageFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		return fmt.Errorf("сохранение в файл. %w", err)
+		return "", fmt.Errorf("сохранение в файл. %w", err)
 	}
 	defer file.Close()
 	element := model.StorageJSON{
@@ -67,17 +74,17 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) error {
 	}
 	body, err := json.Marshal(element)
 	if err != nil {
-		return fmt.Errorf("сохранение элемента в файле. %w", err)
+		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
 	_, err = file.Write(body)
 	if err != nil {
-		return fmt.Errorf("сохранение элемента в файле. %w", err)
+		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
 	_, err = file.Write([]byte("\n"))
 	if err != nil {
-		return fmt.Errorf("сохранение элемента в файле. %w", err)
+		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
 	}
-	return nil
+	return short, nil
 }
 
 func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
@@ -135,13 +142,25 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 			e.Collision = true
 			e.Error = storage.ErrURLIsExist
 		} else {
-			s.pairs[v.ShortURL] = v.OriginalURL
+			was := false
+			// для обратной совместимости
+			for k2, v2 := range s.pairs {
+				if v2 == v.OriginalURL {
+					e.Error = storage.ErrURLConflict
+					e.ShortURL = k2
+					was = true
+					break
+				}
+			}
+			if !was {
+				s.pairs[v.ShortURL] = v.OriginalURL
 
-			valuesForFile = append(valuesForFile, model.StorageJSON{
-				UUID:        "",
-				ShortURL:    v.ShortURL,
-				OriginalURL: v.OriginalURL,
-			})
+				valuesForFile = append(valuesForFile, model.StorageJSON{
+					UUID:        "",
+					ShortURL:    v.ShortURL,
+					OriginalURL: v.OriginalURL,
+				})
+			}
 		}
 		result = append(result, e)
 	}

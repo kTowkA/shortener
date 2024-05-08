@@ -58,12 +58,15 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newLink, err := s.saveLink(r.Context(), link, attems)
-	if err != nil {
+	w.Header().Set("content-type", "text/plain")
+	if errors.Is(err, storage.ErrURLConflict) {
+		w.WriteHeader(http.StatusConflict)
+	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	} else {
+		w.WriteHeader(http.StatusCreated)
 	}
-	w.Header().Set("content-type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(newLink))
 }
 
@@ -127,11 +130,16 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
 		return
 	}
+	conflict := false
 	newLink, err := s.saveLink(r.Context(), req.URL, attems)
-	if err != nil {
+	if errors.Is(err, storage.ErrURLConflict) {
+		conflict = true
+	}
+	if err != nil && !conflict {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	res := model.ResponseShortURL{
 		Result: newLink,
 	}
@@ -143,7 +151,12 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	if w.Header().Get("content-type") == "" {
 		w.Header().Set("content-type", "application/json")
 	}
-	w.WriteHeader(http.StatusCreated)
+	if conflict {
+		w.WriteHeader(http.StatusConflict)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
+
 	w.Write(resp)
 }
 
@@ -243,13 +256,14 @@ func (s *Server) saveLink(ctx context.Context, link string, attems int) (string,
 
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
-		err = s.db.SaveURL(ctx, link, genLink)
+		genLink, err = s.db.SaveURL(ctx, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
 			genLink = genLink + forUnique
 			continue
+		} else if errors.Is(err, storage.ErrURLConflict) {
+			return s.Config.BaseAddress + genLink, err
 		} else if err != nil {
-			// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
 			return "", err
 		}
 
