@@ -72,7 +72,10 @@ func (s *Server) ListenAndServe() error {
 		r.Post("/", s.encodeURL)
 		r.Get("/{short}", s.decodeURL)
 		r.Route("/api", func(r chi.Router) {
-			r.Post("/shorten", s.apiShorten)
+			r.Route("/shorten", func(r chi.Router) {
+				r.Post("/", s.apiShorten)
+				r.Post("/batch", s.batch)
+			})
 		})
 		r.Get("/ping", s.ping)
 	})

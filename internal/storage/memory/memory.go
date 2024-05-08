@@ -119,3 +119,55 @@ func restoreFromFile(filename string) (map[string]string, error) {
 	}
 	return elements, nil
 }
+
+func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.BatchResponse, error) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	result := make([]model.BatchResponseElement, 0, len(values))
+	valuesForFile := make([]model.StorageJSON, 0, len(values))
+	for _, v := range values {
+		e := model.BatchResponseElement{
+			CorrelationID: v.CorrelationID,
+			OriginalURL:   v.OriginalURL,
+		}
+		if _, ok := s.pairs[v.ShortURL]; ok {
+			e.Collision = true
+			e.Error = storage.ErrURLIsExist
+		} else {
+			s.pairs[v.ShortURL] = v.OriginalURL
+
+			valuesForFile = append(valuesForFile, model.StorageJSON{
+				UUID:        "",
+				ShortURL:    v.ShortURL,
+				OriginalURL: v.OriginalURL,
+			})
+		}
+		result = append(result, e)
+	}
+
+	if s.storageFile == "" {
+		return result, nil
+	}
+	file, err := os.OpenFile(s.storageFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("сохранение в файл. %w", err)
+	}
+	defer file.Close()
+	for _, v := range valuesForFile {
+		body, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+		}
+		_, err = file.Write(body)
+		if err != nil {
+			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+		}
+		_, err = file.Write([]byte("\n"))
+		if err != nil {
+			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+		}
+	}
+
+	return result, nil
+}

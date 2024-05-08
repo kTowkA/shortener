@@ -157,6 +157,83 @@ func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
+	// проверяем, что контент тайп нужный
+	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
+		return
+	}
+
+	// проверяем, что тело существует
+	if r.Body == nil {
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
+		return
+	}
+
+	// работаем с телом ответа
+	buf := bytes.Buffer{}
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req := model.BatchRequest{}
+	err = json.Unmarshal(buf.Bytes(), &req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req = validateBatch(req)
+	// проверяем, что есть запросы
+	if len(req) == 0 {
+		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = generateLinksBatch(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := s.db.Batch(r.Context(), req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for i := range resp {
+		if resp[i].ShortURL != "" {
+			resp[i].ShortURL = s.Config.BaseAddress + resp[i].ShortURL
+			continue
+		}
+		if resp[i].Error != nil {
+			logger.Log.Error("ошибка в batch", zap.String("original_url", resp[i].OriginalURL), zap.Error(err))
+		}
+		// если были колиззии пробуем сохранить с добавлением подстроки
+		if resp[i].Collision {
+			link, err := s.saveLink(r.Context(), resp[i].OriginalURL, attems)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			resp[i].ShortURL = s.Config.BaseAddress + link
+		}
+	}
+
+	result, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if w.Header().Get("content-type") == "" {
+		w.Header().Set("content-type", "application/json")
+	}
+	w.WriteHeader(http.StatusCreated)
+	w.Write(result)
+}
+
 func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {
 	const forUnique = "X"
 	genLink, err := generateSHA1(link, defaultLenght)
@@ -206,4 +283,32 @@ func generateSHA1(original string, lenght int) (string, error) {
 		}
 	}
 	return result.String(), nil
+}
+
+func validateBatch(batch model.BatchRequest) model.BatchRequest {
+	newBatch := make([]model.BatchRequestElement, 0, len(batch))
+	for _, v := range batch {
+		v.OriginalURL = strings.TrimSpace(v.OriginalURL)
+		if v.OriginalURL == "" {
+			continue
+		}
+		if _, err := url.ParseRequestURI(v.OriginalURL); err != nil {
+			continue
+		}
+		newBatch = append(newBatch, v)
+	}
+	return newBatch
+}
+
+func generateLinksBatch(batch *model.BatchRequest) error {
+	x := *batch
+	for i := range x {
+		short, err := generateSHA1(x[i].OriginalURL, defaultLenght)
+		if err != nil {
+			return err
+		}
+		x[i].ShortURL = short
+	}
+	batch = &x
+	return nil
 }
