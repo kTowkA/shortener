@@ -52,7 +52,7 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) (string, erro
 	if _, ok := s.pairs[short]; ok {
 		return "", storage.ErrURLIsExist
 	}
-	if oldShort := s.findShortUrl(real); oldShort != "" {
+	if oldShort := s.findShortURL(real); oldShort != "" {
 		return oldShort, storage.ErrURLConflict
 	}
 
@@ -129,7 +129,7 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 			e.Collision = true
 			e.Error = storage.ErrURLIsExist
 		} else {
-			if oldShort := s.findShortUrl(v.OriginalURL); oldShort != "" {
+			if oldShort := s.findShortURL(v.OriginalURL); oldShort != "" {
 				e.Error = storage.ErrURLConflict
 				e.ShortURL = oldShort
 			} else {
@@ -156,8 +156,8 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 	return result, nil
 }
 
-// findShortUrl ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)
-func (s *Storage) findShortUrl(real string) string {
+// findShortURL ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)
+func (s *Storage) findShortURL(real string) string {
 	// не блокируем mutex так как вызываем только в служебных целях
 	for k, v := range s.pairs {
 		if v == real {
