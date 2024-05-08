@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -51,38 +52,24 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) (string, erro
 	if _, ok := s.pairs[short]; ok {
 		return "", storage.ErrURLIsExist
 	}
-	// для обратной совместимости
-	for k, v := range s.pairs {
-		if v == real {
-			return k, storage.ErrURLConflict
-		}
+	if oldShort := s.findShortUrl(real); oldShort != "" {
+		return oldShort, storage.ErrURLConflict
 	}
 
 	s.pairs[short] = real
 	if s.storageFile == "" {
 		return short, nil
 	}
-	file, err := os.OpenFile(s.storageFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	err := savelToFile(s.storageFile, []model.StorageJSON{
+		{
+			UUID:        "",
+			ShortURL:    short,
+			OriginalURL: real,
+		},
+	},
+	)
 	if err != nil {
-		return "", fmt.Errorf("сохранение в файл. %w", err)
-	}
-	defer file.Close()
-	element := model.StorageJSON{
-		UUID:        "",
-		ShortURL:    short,
-		OriginalURL: real,
-	}
-	body, err := json.Marshal(element)
-	if err != nil {
-		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
-	}
-	_, err = file.Write(body)
-	if err != nil {
-		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
-	}
-	_, err = file.Write([]byte("\n"))
-	if err != nil {
-		return "", fmt.Errorf("сохранение элемента в файле. %w", err)
+		return "", fmt.Errorf("сохранение результатов в файл. %w", err)
 	}
 	return short, nil
 }
@@ -142,17 +129,10 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 			e.Collision = true
 			e.Error = storage.ErrURLIsExist
 		} else {
-			was := false
-			// для обратной совместимости
-			for k2, v2 := range s.pairs {
-				if v2 == v.OriginalURL {
-					e.Error = storage.ErrURLConflict
-					e.ShortURL = k2
-					was = true
-					break
-				}
-			}
-			if !was {
+			if oldShort := s.findShortUrl(v.OriginalURL); oldShort != "" {
+				e.Error = storage.ErrURLConflict
+				e.ShortURL = oldShort
+			} else {
 				s.pairs[v.ShortURL] = v.OriginalURL
 
 				valuesForFile = append(valuesForFile, model.StorageJSON{
@@ -162,31 +142,55 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 				})
 			}
 		}
+
 		result = append(result, e)
 	}
 
 	if s.storageFile == "" {
 		return result, nil
 	}
-	file, err := os.OpenFile(s.storageFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	err := savelToFile(s.storageFile, valuesForFile)
 	if err != nil {
-		return nil, fmt.Errorf("сохранение в файл. %w", err)
+		return nil, fmt.Errorf("сохранение результатов в файл. %w", err)
+	}
+	return result, nil
+}
+
+// findShortUrl ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)
+func (s *Storage) findShortUrl(real string) string {
+	// не блокируем mutex так как вызываем только в служебных целях
+	for k, v := range s.pairs {
+		if v == real {
+			return k
+		}
+	}
+	return ""
+}
+
+// savelToFile сохранение в файле
+func savelToFile(fileName string, values []model.StorageJSON) error {
+	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("открытие файла %s. %w", fileName, err)
 	}
 	defer file.Close()
-	for _, v := range valuesForFile {
+	errs := make([]error, 0)
+	for _, v := range values {
 		body, err := json.Marshal(v)
 		if err != nil {
-			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+			errs = append(errs, fmt.Errorf("кодирование в JSON %v. %w", v, err))
+			continue
 		}
 		_, err = file.Write(body)
 		if err != nil {
-			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+			errs = append(errs, fmt.Errorf("сохранение элемента в файле %v. %w", v, err))
+			continue
 		}
 		_, err = file.Write([]byte("\n"))
 		if err != nil {
-			return nil, fmt.Errorf("сохранение элемента в файле. %w", err)
+			errs = append(errs, err)
+			continue
 		}
 	}
-
-	return result, nil
+	return errors.Join(errs...)
 }
