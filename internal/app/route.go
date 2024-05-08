@@ -209,7 +209,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = generateLinksBatch(&req)
+	err = generateLinksBatch(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -318,15 +318,13 @@ func validateBatch(batch model.BatchRequest) model.BatchRequest {
 	return newBatch
 }
 
-func generateLinksBatch(batch *model.BatchRequest) error {
-	x := *batch
-	for i := range x {
-		short, err := generateSHA1(x[i].OriginalURL, defaultLenght)
+func generateLinksBatch(batch model.BatchRequest) error {
+	for i := range batch {
+		short, err := generateSHA1(batch[i].OriginalURL, defaultLenght)
 		if err != nil {
 			return err
 		}
-		x[i].ShortURL = short
+		batch[i].ShortURL = short
 	}
-	batch = &x
 	return nil
 }
