@@ -59,14 +59,18 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 	newLink, err := s.saveLink(r.Context(), link, attems)
 	w.Header().Set("content-type", "text/plain")
-	if errors.Is(err, storage.ErrURLConflict) {
-		w.WriteHeader(http.StatusConflict)
-	} else if err != nil {
+
+	if err != nil {
+		if errors.Is(err, storage.ErrURLConflict) {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(newLink))
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else {
-		w.WriteHeader(http.StatusCreated)
 	}
+
+	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(newLink))
 }
 
