@@ -45,6 +45,7 @@ func (p *PStorage) bootstrap(ctx context.Context) error {
 			user_id uuid,
 			short_url text,
 			original_url text,
+			is_deleted bool,
 			PRIMARY KEY(uuid),
 			UNIQUE(short_url),
 			UNIQUE(original_url)
