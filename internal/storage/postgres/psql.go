@@ -80,20 +80,23 @@ func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short st
 	}
 	return resp[0].ShortURL, nil
 }
-func (p *PStorage) RealURL(ctx context.Context, short string) (string, error) {
-	var real string
+func (p *PStorage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
+	answ := model.StorageJSON{}
 	err := p.QueryRow(
 		ctx,
-		"SELECT original_url FROM url_list WHERE short_url=$1",
+		"SELECT original_url,is_deleted FROM url_list WHERE short_url=$1",
 		short,
-	).Scan(&real)
+	).Scan(
+		&answ.OriginalURL,
+		&answ.IsDeleted,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", storage.ErrURLNotFound
+		return model.StorageJSON{}, storage.ErrURLNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("получение записи из БД. %w", err)
+		return model.StorageJSON{}, fmt.Errorf("получение записи из БД. %w", err)
 	}
-	return real, nil
+	return answ, nil
 }
 func (p *PStorage) Ping(ctx context.Context) error {
 	return p.Pool.Ping(ctx)
@@ -113,11 +116,12 @@ func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.Bat
 	b := pgx.Batch{}
 	for _, v := range values {
 		b.Queue(
-			"INSERT INTO url_list(uuid,user_id,original_url,short_url) VALUES($1,$2,$3,$4)",
+			"INSERT INTO url_list(uuid,user_id,original_url,short_url,is_deleted) VALUES($1,$2,$3,$4,$5)",
 			uuid.New(),
 			userID,
 			v.OriginalURL,
 			v.ShortURL,
+			false,
 		)
 	}
 	// отправляем весь batch
@@ -191,6 +195,51 @@ func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.Bat
 	}
 
 	return result, nil
+}
+func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("создание транзакции. %w", err)
+	}
+
+	// проходим по нашим значениям и создаем batch
+	b := pgx.Batch{}
+	for _, v := range deleteLinks {
+		b.Queue(
+			"UPDATE url_list SET is_deleted=$1 WHERE user_id=$2 AND short_url=$3",
+			true,
+			v.UserID,
+			v.ShortURL,
+		)
+	}
+	// отправляем весь batch
+	br := tx.SendBatch(ctx, &b)
+
+	grpErrors := make([]error, 0, len(deleteLinks))
+
+	for _, v := range deleteLinks {
+		tc, err := br.Exec()
+		switch {
+		case err == pgx.ErrNoRows || (err == nil && tc.RowsAffected() == 0):
+			grpErrors = append(grpErrors, fmt.Errorf("userID %s, shortURL %s. %w", v.UserID, v.ShortURL, storage.ErrURLNotFound))
+		case err != nil:
+			grpErrors = append(grpErrors, fmt.Errorf("userID %s, shortURL %s. %w", v.UserID, v.ShortURL, err))
+		}
+	}
+	// не забываем закрыть
+	br.Close()
+	if len(grpErrors) != len(deleteLinks) {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return fmt.Errorf("сохранение изменений транзакции. %w", err)
+		}
+	} else {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			return fmt.Errorf("откат изменений транзакции. %w", err)
+		}
+	}
+	return errors.Join(grpErrors...)
 }
 
 // получить уже сохраненое значение (для исключения дублирования original_url)

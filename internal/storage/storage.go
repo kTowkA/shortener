@@ -22,10 +22,13 @@ type Storager interface {
 	Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error)
 
 	// RealURL получение оригинального url
-	RealURL(ctx context.Context, short string) (string, error)
+	RealURL(ctx context.Context, short string) (model.StorageJSON, error)
 
 	// UserURLs получает все записи сохраненные пользователем
 	UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error)
+
+	// DeleteURLs удаляет записи сохраненные пользователями
+	DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error
 
 	// Ping проверка доступности хранилища
 	Ping(ctx context.Context) error

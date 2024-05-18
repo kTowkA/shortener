@@ -12,10 +12,15 @@ type StorageJSON struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url,omitempty"`
 	OriginalURL string `json:"original_url,omitempty"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 type StorageJSONWithUserID struct {
 	StorageJSON
 	UserID string `json:"user_id"`
+}
+type DeleteURLMessage struct {
+	UserID   string `json:"user_id"`
+	ShortURL string `json:"short_url"`
 }
 type BatchRequest []BatchRequestElement
 type BatchRequestElement struct {

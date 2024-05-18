@@ -75,13 +75,16 @@ func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short str
 	return short, nil
 }
 
-func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
+func (s *Storage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 	if real, ok := s.pairs[short]; ok {
-		return real.OriginalURL, nil
+		return model.StorageJSON{
+			OriginalURL: real.OriginalURL,
+			IsDeleted:   real.IsDeleted,
+		}, nil
 	}
-	return "", storage.ErrURLNotFound
+	return model.StorageJSON{}, storage.ErrURLNotFound
 }
 
 func (s *Storage) Ping(ctx context.Context) error {
@@ -174,6 +177,31 @@ func (s *Storage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stora
 		return nil, storage.ErrURLNotFound
 	}
 	return results, nil
+}
+func (s *Storage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	valuesForFile := make([]model.StorageJSONWithUserID, 0, len(deleteLinks))
+	for _, v := range deleteLinks {
+		if val, ok := s.pairs[v.ShortURL]; ok && val.UserID == v.UserID {
+			val.IsDeleted = true
+			s.pairs[v.ShortURL] = val
+			valuesForFile = append(valuesForFile, s.pairs[v.ShortURL])
+		}
+	}
+
+	if s.storageFile == "" || len(valuesForFile) == 0 {
+		return nil
+	}
+
+	// вообще тут надо перезаписывать файл, так как останутся старые значения
+	// но при загрузке обновленные значения перепишут значения в памяти, так что для упрощения оставляем так
+	err := savelToFile(s.storageFile, valuesForFile)
+	if err != nil {
+		return fmt.Errorf("сохранение результатов в файл. %w", err)
+	}
+	return nil
 }
 
 // findShortURL ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)

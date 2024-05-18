@@ -155,15 +155,15 @@ func gzipValidContenType(header http.Header) bool {
 
 func withToken(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := getUserIDFromCookie(r, secretKey)
+		userID, err := getUserIDFromCookie(r, secretKey)
 		if err == nil {
 			// все хорошо, токен валиден и есть userID - продолжаем
-			h.ServeHTTP(w, r)
+			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey("userID"), userID)))
 			return
 		}
 		// создаем новый токен
 		// в настоящий момент нет системы авторизации/регистрации - мы генерируем новый userID в таких случаях
-		userID := uuid.New()
+		userID = uuid.New()
 		newTokenString, err := buildJWTString(userID, secretKey)
 		if err != nil {
 			logger.Log.Error("создание токена", zap.Error(err))

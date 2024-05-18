@@ -96,13 +96,15 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, storage.ErrURLNotFound.Error(), http.StatusNotFound)
 		return
 	} else if err != nil {
-		// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
+	if real.IsDeleted {
+		w.WriteHeader(http.StatusGone)
+		return
+	}
 	// успешно
-	w.Header().Set("Location", real)
+	w.Header().Set("Location", real.OriginalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
@@ -240,7 +242,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	w.Write(result)
 }
-func (s *Server) userURLs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем, что userID записан в cookie
 	token, err := r.Cookie(authCookie)
@@ -276,6 +278,57 @@ func (s *Server) userURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(result)
+}
+func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	// проверяем, что контент тайп нужный
+	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
+		return
+	}
+
+	// проверяем, что userID записан в cookie
+	token, err := r.Cookie(authCookie)
+	if err != nil && !errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	userID, err := getUserIDFromToken(token.Value, secretKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// проверяем, что тело существует
+	if r.Body == nil {
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
+		return
+	}
+
+	// работаем с телом ответа
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req := []string{}
+	err = json.Unmarshal(buf.Bytes(), &req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for i := range req {
+		s.deleteMessage <- model.DeleteURLMessage{
+			UserID:   userID.String(),
+			ShortURL: req[i],
+		}
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
