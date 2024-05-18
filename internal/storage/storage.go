@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/model"
 )
 
@@ -15,13 +16,16 @@ var (
 
 type Storager interface {
 	// SaveURL сохраняет пару real-short url
-	SaveURL(ctx context.Context, real, short string) (string, error)
+	SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error)
 
 	// Batch пакетное сохранение всех значений values
-	Batch(ctx context.Context, values model.BatchRequest) (model.BatchResponse, error)
+	Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error)
 
 	// RealURL получение оригинального url
 	RealURL(ctx context.Context, short string) (string, error)
+
+	// UserURLs получает все записи сохраненные пользователем
+	UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error)
 
 	// Ping проверка доступности хранилища
 	Ping(ctx context.Context) error

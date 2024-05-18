@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
@@ -57,7 +58,12 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
 		return
 	}
-	newLink, err := s.saveLink(r.Context(), link, attems)
+
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	newLink, err := s.saveLink(r.Context(), userID, link, attems)
 	w.Header().Set("content-type", "text/plain")
 
 	if err != nil {
@@ -135,7 +141,12 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conflict := false
-	newLink, err := s.saveLink(r.Context(), req.URL, attems)
+
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
 	if errors.Is(err, storage.ErrURLConflict) {
 		conflict = true
 	}
@@ -208,8 +219,11 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
 		return
 	}
-
-	resp, err := s.saveBatch(r.Context(), req, attems)
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	resp, err := s.saveBatch(r.Context(), userID, req, attems)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -226,8 +240,45 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	w.Write(result)
 }
+func (s *Server) userURLs(w http.ResponseWriter, r *http.Request) {
 
-func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {
+	// проверяем, что userID записан в cookie
+	token, err := r.Cookie(authCookie)
+	if err != nil && !errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	userID, err := getUserIDFromToken(token.Value, secretKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	urls, err := s.db.UserURLs(r.Context(), userID)
+	if errors.Is(err, storage.ErrURLNotFound) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	for i := range urls {
+		urls[i].ShortURL = s.Config.BaseAddress + urls[i].ShortURL
+	}
+
+	result, err := json.MarshalIndent(urls, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if w.Header().Get("content-type") == "" {
+		w.Header().Set("content-type", "application/json")
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(result)
+}
+
+func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
 	const forUnique = "X"
 	genLink, err := generateSHA1(link, defaultLenght)
 	if err != nil {
@@ -236,7 +287,7 @@ func (s *Server) saveLink(ctx context.Context, link string, attems int) (string,
 
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
-		genLink, err = s.db.SaveURL(ctx, link, genLink)
+		genLink, err = s.db.SaveURL(ctx, userID, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
 			genLink = genLink + forUnique
@@ -254,14 +305,14 @@ func (s *Server) saveLink(ctx context.Context, link string, attems int) (string,
 	// не уложись в заданное количество попыток для создания короткой ссылки
 	return "", errors.New("не смогли создать короткую ссылку")
 }
-func (s *Server) saveBatch(ctx context.Context, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
+func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
 	result := make([]model.BatchResponseElement, 0, len(batch))
 	for i := 0; i < attems; i++ {
 		err := generateLinksBatch(batch)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := s.db.Batch(ctx, batch)
+		resp, err := s.db.Batch(ctx, userID, batch)
 		if err != nil {
 			return nil, err
 		}

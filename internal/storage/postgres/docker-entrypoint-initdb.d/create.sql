@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS url_list (
     uuid uuid,
+    user_id uuid,
     short_url text,
     original_url text,
     PRIMARY KEY(uuid),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,20 @@ const (
 
 	// defaultLenght длина по умолчанию
 	defaultLenght = 7
+
+	defaultSecretKey = "my_super_secret_key"
 )
+
+var (
+	secretKey string
+)
+
+func init() {
+	secretKey = os.Getenv("SECRET_KEY")
+	if secretKey == "" {
+		secretKey = defaultSecretKey
+	}
+}
 
 type Server struct {
 	db     storage.Storager
@@ -65,7 +79,7 @@ func (s *Server) ListenAndServe() error {
 
 	mux := chi.NewRouter()
 
-	mux.Use(withLog, withGZIP)
+	mux.Use(withLog, withGZIP, withToken)
 
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)
@@ -74,6 +88,9 @@ func (s *Server) ListenAndServe() error {
 			r.Route("/shorten", func(r chi.Router) {
 				r.Post("/", s.apiShorten)
 				r.Post("/batch", s.batch)
+			})
+			r.Route("/user", func(r chi.Router) {
+				r.Get("/urls", s.userURLs)
 			})
 		})
 		r.Get("/ping", s.ping)

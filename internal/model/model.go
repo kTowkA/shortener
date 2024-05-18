@@ -13,7 +13,10 @@ type StorageJSON struct {
 	ShortURL    string `json:"short_url,omitempty"`
 	OriginalURL string `json:"original_url,omitempty"`
 }
-
+type StorageJSONWithUserID struct {
+	StorageJSON
+	UserID string `json:"user_id"`
+}
 type BatchRequest []BatchRequestElement
 type BatchRequestElement struct {
 	CorrelationID string `json:"correlation_id,omitempty"`

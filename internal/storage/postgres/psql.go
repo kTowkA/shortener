@@ -42,6 +42,7 @@ func (p *PStorage) bootstrap(ctx context.Context) error {
 		`
 		CREATE TABLE IF NOT EXISTS url_list (
 			uuid uuid,
+			user_id uuid,
 			short_url text,
 			original_url text,
 			PRIMARY KEY(uuid),
@@ -57,9 +58,10 @@ func (p *PStorage) bootstrap(ctx context.Context) error {
 }
 
 // реализация интерфейса Storager
-func (p *PStorage) SaveURL(ctx context.Context, real, short string) (string, error) {
+func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
 	resp, err := p.Batch(
 		ctx,
+		userID,
 		model.BatchRequest{
 			model.BatchRequestElement{
 				OriginalURL: real,
@@ -101,7 +103,7 @@ func (p *PStorage) Close() error {
 	return nil
 }
 
-func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.BatchResponse, error) {
+func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("создание транзакции. %w", err)
@@ -111,8 +113,9 @@ func (p *PStorage) Batch(ctx context.Context, values model.BatchRequest) (model.
 	b := pgx.Batch{}
 	for _, v := range values {
 		b.Queue(
-			"INSERT INTO url_list(uuid,original_url,short_url) VALUES($1,$2,$3)",
+			"INSERT INTO url_list(uuid,user_id,original_url,short_url) VALUES($1,$2,$3,$4)",
 			uuid.New(),
+			userID,
 			v.OriginalURL,
 			v.ShortURL,
 		)
@@ -206,4 +209,32 @@ func (p *PStorage) short(ctx context.Context, real string) (string, error) {
 		return "", storage.ErrURLNotFound
 	}
 	return short, nil
+}
+
+func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
+	rows, err := p.Query(
+		ctx,
+		"SELECT short_url,original_url FROM url_list WHERE user_id=$1",
+		userID,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, storage.ErrURLNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]model.StorageJSON, 0)
+	for rows.Next() {
+		r := model.StorageJSON{}
+		err = rows.Scan(&r.ShortURL, &r.OriginalURL)
+		if err != nil {
+			return nil, fmt.Errorf("получение отдельной записи для пользователя. %w", err)
+		}
+		results = append(results, r)
+	}
+	if len(results) == 0 {
+		return nil, storage.ErrURLNotFound
+	}
+	return results, nil
 }

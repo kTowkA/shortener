@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
@@ -17,14 +18,14 @@ import (
 )
 
 type Storage struct {
-	pairs map[string]string
+	pairs map[string]model.StorageJSONWithUserID
 	sync.Mutex
 	storageFile string
 }
 
 func NewStorage(storageFile string) (*Storage, error) {
 	var (
-		links map[string]string
+		links map[string]model.StorageJSONWithUserID
 		err   error
 	)
 	if storageFile != "" {
@@ -34,7 +35,7 @@ func NewStorage(storageFile string) (*Storage, error) {
 		}
 	}
 	if links == nil {
-		links = make(map[string]string)
+		links = make(map[string]model.StorageJSONWithUserID)
 	}
 	return &Storage{
 		pairs:       links,
@@ -46,7 +47,7 @@ func (s *Storage) Close() error {
 	return nil
 }
 
-func (s *Storage) SaveURL(ctx context.Context, real, short string) (string, error) {
+func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 	if _, ok := s.pairs[short]; ok {
@@ -56,18 +57,18 @@ func (s *Storage) SaveURL(ctx context.Context, real, short string) (string, erro
 		return oldShort, storage.ErrURLConflict
 	}
 
-	s.pairs[short] = real
-	if s.storageFile == "" {
-		return short, nil
-	}
-	err := savelToFile(s.storageFile, []model.StorageJSON{
-		{
-			UUID:        "",
+	s.pairs[short] = model.StorageJSONWithUserID{
+		UserID: userID.String(),
+		StorageJSON: model.StorageJSON{
+			UUID:        uuid.New().String(),
 			ShortURL:    short,
 			OriginalURL: real,
 		},
-	},
-	)
+	}
+	if s.storageFile == "" {
+		return short, nil
+	}
+	err := savelToFile(s.storageFile, []model.StorageJSONWithUserID{s.pairs[short]})
 	if err != nil {
 		return "", fmt.Errorf("сохранение результатов в файл. %w", err)
 	}
@@ -78,7 +79,7 @@ func (s *Storage) RealURL(ctx context.Context, short string) (string, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 	if real, ok := s.pairs[short]; ok {
-		return real, nil
+		return real.OriginalURL, nil
 	}
 	return "", storage.ErrURLNotFound
 }
@@ -87,39 +88,39 @@ func (s *Storage) Ping(ctx context.Context) error {
 	return nil
 }
 
-func restoreFromFile(filename string) (map[string]string, error) {
+func restoreFromFile(filename string) (map[string]model.StorageJSONWithUserID, error) {
 	file, err := os.Open(filename)
-	// if errors.Is(err, os.ErrNotExist) {
+
 	if err != nil && strings.Contains(err.Error(), "no such file or directory") {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("восстановление записей из файла. %w", err)
 	}
-	elements := make(map[string]string)
+	elements := make(map[string]model.StorageJSONWithUserID)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		raw := scanner.Bytes()
 		if len(raw) == 0 {
 			continue
 		}
-		element := model.StorageJSON{}
+		element := model.StorageJSONWithUserID{}
 		err = json.Unmarshal(raw, &element)
 		if err != nil {
 			logger.Log.Error("раскодирование элемента", zap.Error(err))
 			continue
 		}
-		elements[element.ShortURL] = element.OriginalURL
+		elements[element.ShortURL] = element
 	}
 	return elements, nil
 }
 
-func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.BatchResponse, error) {
+func (s *Storage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
 	result := make([]model.BatchResponseElement, 0, len(values))
-	valuesForFile := make([]model.StorageJSON, 0, len(values))
+	valuesForFile := make([]model.StorageJSONWithUserID, 0, len(values))
 	for _, v := range values {
 		e := model.BatchResponseElement{
 			CorrelationID: v.CorrelationID,
@@ -133,13 +134,16 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 				e.Error = storage.ErrURLConflict
 				e.ShortURL = oldShort
 			} else {
-				s.pairs[v.ShortURL] = v.OriginalURL
+				s.pairs[v.ShortURL] = model.StorageJSONWithUserID{
+					UserID: userID.String(),
+					StorageJSON: model.StorageJSON{
+						UUID:        uuid.New().String(),
+						ShortURL:    v.ShortURL,
+						OriginalURL: v.OriginalURL,
+					},
+				}
 
-				valuesForFile = append(valuesForFile, model.StorageJSON{
-					UUID:        "",
-					ShortURL:    v.ShortURL,
-					OriginalURL: v.OriginalURL,
-				})
+				valuesForFile = append(valuesForFile, s.pairs[v.ShortURL])
 			}
 		}
 
@@ -156,11 +160,27 @@ func (s *Storage) Batch(ctx context.Context, values model.BatchRequest) (model.B
 	return result, nil
 }
 
+func (s *Storage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+	results := make([]model.StorageJSON, 0)
+	for _, v := range s.pairs {
+		if v.UserID != userID.String() {
+			continue
+		}
+		results = append(results, v.StorageJSON)
+	}
+	if len(results) == 0 {
+		return nil, storage.ErrURLNotFound
+	}
+	return results, nil
+}
+
 // findShortURL ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)
 func (s *Storage) findShortURL(real string) string {
 	// не блокируем mutex так как вызываем только в служебных целях
 	for k, v := range s.pairs {
-		if v == real {
+		if v.OriginalURL == real {
 			return k
 		}
 	}
@@ -168,7 +188,7 @@ func (s *Storage) findShortURL(real string) string {
 }
 
 // savelToFile сохранение в файле
-func savelToFile(fileName string, values []model.StorageJSON) error {
+func savelToFile(fileName string, values []model.StorageJSONWithUserID) error {
 	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return fmt.Errorf("открытие файла %s. %w", fileName, err)
