@@ -1,38 +1,62 @@
 package config
 
+import (
+	"flag"
+
+	"github.com/caarlos0/env/v6"
+)
+
 const (
 	EnvServerAddress = "SERVER_ADDRESS"
 	EnvBaseURL       = "BASE_URL"
+	EnvDSN           = "DATABASE_DSN"
+)
+
+var (
+	flagA               string
+	flagB               string
+	flagStorageFilePath string
+	flagDatabaseDSN     string
+	logLevel            string
 )
 
 type Config struct {
 	Address         string `env:"SERVER_ADDRESS"`
 	BaseAddress     string `env:"BASE_URL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 	LogLevel        string
 }
 
-type ConfigParam func(c *Config)
+func ParseConfig() (Config, error) {
+	flag.StringVar(&flagA, "a", "localhost:8080", "address:host")
+	flag.StringVar(&flagB, "b", "http://localhost:8080", "result address")
+	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
+	flag.StringVar(&flagStorageFilePath, "f", "/tmp/short-url-db.json", "file on disk with db")
+	flag.StringVar(&logLevel, "l", "info", "level (panic,fatal,error,warn,info,debug,trace)")
 
-func ConfigAddress(address string) ConfigParam {
-	return func(c *Config) {
-		c.Address = address
+	flag.Parse()
+
+	cfg := Config{
+		LogLevel: logLevel,
 	}
-}
-func ConfigBaseAddress(baseAddress string) ConfigParam {
-	return func(c *Config) {
-		c.BaseAddress = baseAddress
+	err := env.Parse(&cfg)
+	if err != nil {
+		return Config{}, err
 	}
-}
-func ConfigFileSstoragePath(fileStoragePath string) ConfigParam {
-	return func(c *Config) {
-		c.FileStoragePath = fileStoragePath
+
+	if cfg.Address == "" {
+		cfg.Address = flagA
 	}
-}
-func NewConfig(configs ...ConfigParam) (Config, error) {
-	cfg := new(Config)
-	for _, c := range configs {
-		c(cfg)
+
+	if cfg.BaseAddress == "" {
+		cfg.BaseAddress = flagB
 	}
-	return *cfg, nil
+	if cfg.DatabaseDSN == "" {
+		cfg.DatabaseDSN = flagDatabaseDSN
+	}
+	if cfg.FileStoragePath == "" {
+		cfg.FileStoragePath = flagStorageFilePath
+	}
+	return cfg, nil
 }

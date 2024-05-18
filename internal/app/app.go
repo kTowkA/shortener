@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
-	_ "github.com/sirupsen/logrus"
+	"github.com/kTowkA/shortener/internal/storage/postgres"
 	"go.uber.org/zap"
 )
 
@@ -46,12 +47,21 @@ func NewServer(cfg config.Config) (*Server, error) {
 }
 
 func (s *Server) ListenAndServe() error {
-	storage, err := memory.NewStorage(s.Config.FileStoragePath)
+	var (
+		myStorage storage.Storager
+		err       error
+	)
+	if s.Config.DatabaseDSN != "" {
+		myStorage, err = postgres.NewStorage(context.Background(), s.Config.DatabaseDSN)
+	} else {
+		myStorage, err = memory.NewStorage(s.Config.FileStoragePath)
+	}
 	if err != nil {
 		return fmt.Errorf("запуск сервера. %w", err)
 	}
-	defer storage.Close()
-	s.db = storage
+	defer myStorage.Close()
+
+	s.db = myStorage
 
 	mux := chi.NewRouter()
 
@@ -61,8 +71,12 @@ func (s *Server) ListenAndServe() error {
 		r.Post("/", s.encodeURL)
 		r.Get("/{short}", s.decodeURL)
 		r.Route("/api", func(r chi.Router) {
-			r.Post("/shorten", s.apiShorten)
+			r.Route("/shorten", func(r chi.Router) {
+				r.Post("/", s.apiShorten)
+				r.Post("/batch", s.batch)
+			})
 		})
+		r.Get("/ping", s.ping)
 	})
 
 	logger.Log.Info("запуск сервера", zap.String("адрес", s.Config.Address))
