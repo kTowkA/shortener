@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	authCookie = "jwt"
-	TOKEN_EXP  = 12 * time.Hour
+	authCookie      = "jwt"
+	TokenExp12Hours = 12 * time.Hour
 )
 
 type contextKey string
@@ -183,7 +183,7 @@ func buildJWTString(userID uuid.UUID, secret string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			// когда создан токен
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp12Hours)),
 		},
 		// собственное утверждение
 		UserID: userID,
