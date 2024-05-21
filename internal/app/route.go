@@ -27,7 +27,7 @@ import (
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "text/plain") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "text/plain") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"text/plain", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -64,7 +64,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		userID = uuid.New()
 	}
 	newLink, err := s.saveLink(r.Context(), userID, link, attems)
-	w.Header().Set("content-type", "text/plain")
+	w.Header().Set("Content-Type", "text/plain")
 
 	if err != nil {
 		if errors.Is(err, storage.ErrURLConflict) {
@@ -112,7 +112,7 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -165,8 +165,8 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get("content-type") == "" {
-		w.Header().Set("content-type", "application/json")
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
 	}
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
@@ -189,7 +189,7 @@ func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -236,8 +236,8 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get("content-type") == "" {
-		w.Header().Set("content-type", "application/json")
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write(result)
@@ -273,15 +273,15 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get("content-type") == "" {
-		w.Header().Set("content-type", "application/json")
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(result)
 }
 func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
