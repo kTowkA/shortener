@@ -307,6 +307,7 @@ func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
+	defer r.Body.Close()
 
 	// работаем с телом ответа
 	buf := bytes.Buffer{}
