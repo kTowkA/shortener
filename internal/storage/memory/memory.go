@@ -53,7 +53,7 @@ func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short str
 	if _, ok := s.pairs[short]; ok {
 		return "", storage.ErrURLIsExist
 	}
-	if oldShort := s.findShortURL(real); oldShort != "" {
+	if oldShort := s.findShortURL(real, userID); oldShort != "" {
 		return oldShort, storage.ErrURLConflict
 	}
 
@@ -68,7 +68,7 @@ func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short str
 	if s.storageFile == "" {
 		return short, nil
 	}
-	err := savelToFile(s.storageFile, []model.StorageJSONWithUserID{s.pairs[short]})
+	err := savelToFile(s.storageFile, []model.StorageJSONWithUserID{s.pairs[short]}, os.O_WRONLY|os.O_CREATE|os.O_APPEND)
 	if err != nil {
 		return "", fmt.Errorf("сохранение результатов в файл. %w", err)
 	}
@@ -133,7 +133,7 @@ func (s *Storage) Batch(ctx context.Context, userID uuid.UUID, values model.Batc
 			e.Collision = true
 			e.Error = storage.ErrURLIsExist
 		} else {
-			if oldShort := s.findShortURL(v.OriginalURL); oldShort != "" {
+			if oldShort := s.findShortURL(v.OriginalURL, userID); oldShort != "" {
 				e.Error = storage.ErrURLConflict
 				e.ShortURL = oldShort
 			} else {
@@ -156,7 +156,7 @@ func (s *Storage) Batch(ctx context.Context, userID uuid.UUID, values model.Batc
 	if s.storageFile == "" {
 		return result, nil
 	}
-	err := savelToFile(s.storageFile, valuesForFile)
+	err := savelToFile(s.storageFile, valuesForFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND)
 	if err != nil {
 		return nil, fmt.Errorf("сохранение результатов в файл. %w", err)
 	}
@@ -180,35 +180,28 @@ func (s *Storage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stora
 }
 func (s *Storage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
 	s.Mutex.Lock()
-	defer s.Mutex.Unlock()
-
-	valuesForFile := make([]model.StorageJSONWithUserID, 0, len(deleteLinks))
+	change := false
 	for _, v := range deleteLinks {
 		if val, ok := s.pairs[v.ShortURL]; ok && val.UserID == v.UserID {
 			val.IsDeleted = true
 			s.pairs[v.ShortURL] = val
-			valuesForFile = append(valuesForFile, s.pairs[v.ShortURL])
+			change = true
 		}
 	}
+	s.Mutex.Unlock()
 
-	if s.storageFile == "" || len(valuesForFile) == 0 {
+	if s.storageFile == "" || !change {
 		return nil
 	}
 
-	// вообще тут надо перезаписывать файл, так как останутся старые значения
-	// но при загрузке обновленные значения перепишут значения в памяти, так что для упрощения оставляем так
-	err := savelToFile(s.storageFile, valuesForFile)
-	if err != nil {
-		return fmt.Errorf("сохранение результатов в файл. %w", err)
-	}
-	return nil
+	return s.rewriteFile()
 }
 
 // findShortURL ищем короткую ссылку (добавили когда ввели функционал с 409 ошибкой)
-func (s *Storage) findShortURL(real string) string {
+func (s *Storage) findShortURL(real string, userID uuid.UUID) string {
 	// не блокируем mutex так как вызываем только в служебных целях
 	for k, v := range s.pairs {
-		if v.OriginalURL == real {
+		if v.OriginalURL == real && userID.String() == v.UserID {
 			return k
 		}
 	}
@@ -216,8 +209,8 @@ func (s *Storage) findShortURL(real string) string {
 }
 
 // savelToFile сохранение в файле
-func savelToFile(fileName string, values []model.StorageJSONWithUserID) error {
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+func savelToFile(fileName string, values []model.StorageJSONWithUserID, flag int) error {
+	file, err := os.OpenFile(fileName, flag, 0666)
 	if err != nil {
 		return fmt.Errorf("открытие файла %s. %w", fileName, err)
 	}
@@ -241,4 +234,19 @@ func savelToFile(fileName string, values []model.StorageJSONWithUserID) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// rewriteFile перезаписываем файл
+func (s *Storage) rewriteFile() error {
+	s.Mutex.Lock()
+	values := make([]model.StorageJSONWithUserID, 0, len(s.pairs))
+	for _, v := range s.pairs {
+		values = append(values, v)
+	}
+	s.Mutex.Unlock()
+	err := savelToFile(s.storageFile, values, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return fmt.Errorf("перезапись файла. %w", err)
+	}
+	return nil
 }

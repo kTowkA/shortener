@@ -161,7 +161,7 @@ func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.Bat
 			}
 			if strings.Contains(err.Error(), "original_url") { //оригинальный урл. надо получить уже имеющиеся совпадение
 				// ищем ранее сохраненный url
-				short, err := p.short(ctx, v.OriginalURL)
+				short, err := p.short(ctx, v.OriginalURL, userID)
 				if err != nil {
 					e.Error = err
 					break
@@ -244,13 +244,14 @@ func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURL
 }
 
 // получить уже сохраненое значение (для исключения дублирования original_url)
-func (p *PStorage) short(ctx context.Context, real string) (string, error) {
+func (p *PStorage) short(ctx context.Context, real string, userID uuid.UUID) (string, error) {
 
 	var short string
 	err := p.QueryRow(
 		ctx,
-		"SELECT short_url FROM url_list WHERE original_url=$1",
+		"SELECT short_url FROM url_list WHERE original_url=$1 AND user_id=$2",
 		real,
+		userID,
 	).Scan(&short)
 	if err != nil && err != pgx.ErrNoRows {
 		return "", err

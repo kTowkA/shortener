@@ -23,9 +23,7 @@ const (
 	attems = 10
 
 	// defaultLenght длина по умолчанию
-	defaultLenght = 7
-
-	defaultSecretKey = "my_super_secret_key"
+	defaultLenght = 10
 )
 
 type Server struct {

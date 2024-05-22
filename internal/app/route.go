@@ -41,6 +41,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	// читаем тело
 	link, err := bufio.NewReader(r.Body).ReadString('\n')
 	if err != nil && err != io.EOF {
+		logger.Log.Error("wow2", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -72,6 +73,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(newLink))
 			return
 		}
+		logger.Log.Error("wow1", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -341,19 +343,19 @@ func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, at
 
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
-		genLink, err = s.db.SaveURL(ctx, userID, link, genLink)
+		savedLink, err := s.db.SaveURL(ctx, userID, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
 			genLink = genLink + forUnique
 			continue
 		} else if errors.Is(err, storage.ErrURLConflict) {
-			return s.Config.BaseAddress + genLink, err
+			return s.Config.BaseAddress + savedLink, err
 		} else if err != nil {
 			return "", err
 		}
 
 		// успешно
-		return s.Config.BaseAddress + genLink, nil
+		return s.Config.BaseAddress + savedLink, nil
 	}
 
 	// не уложись в заданное количество попыток для создания короткой ссылки
