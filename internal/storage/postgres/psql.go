@@ -228,16 +228,16 @@ func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURL
 		}
 	}
 	// не забываем закрыть
-	br.Close()
-	if len(grpErrors) != len(deleteLinks) {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return fmt.Errorf("сохранение изменений транзакции. %w", err)
-		}
-	} else {
+	err = br.Close()
+	if err != nil {
 		err = tx.Rollback(ctx)
 		if err != nil {
 			return fmt.Errorf("откат изменений транзакции. %w", err)
+		}
+	} else {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return fmt.Errorf("сохранение изменений транзакции. %w", err)
 		}
 	}
 	return errors.Join(grpErrors...)
