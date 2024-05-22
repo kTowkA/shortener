@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -28,17 +27,6 @@ const (
 
 	defaultSecretKey = "my_super_secret_key"
 )
-
-var (
-	secretKey string
-)
-
-func init() {
-	secretKey = os.Getenv("SECRET_KEY")
-	if secretKey == "" {
-		secretKey = defaultSecretKey
-	}
-}
 
 type Server struct {
 	db            storage.Storager
@@ -85,7 +73,7 @@ func (s *Server) ListenAndServe() error {
 
 	mux := chi.NewRouter()
 
-	mux.Use(withLog, withGZIP, withToken)
+	mux.Use(withLog, withGZIP, s.withToken)
 
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)

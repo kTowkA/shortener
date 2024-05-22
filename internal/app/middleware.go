@@ -153,9 +153,9 @@ func gzipValidContenType(header http.Header) bool {
 	return false
 }
 
-func withToken(h http.Handler) http.Handler {
+func (s *Server) withToken(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, err := getUserIDFromCookie(r, secretKey)
+		userID, err := getUserIDFromCookie(r, s.Config.SecretKey)
 		if err == nil {
 			// все хорошо, токен валиден и есть userID - продолжаем
 			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey("userID"), userID)))
@@ -164,7 +164,7 @@ func withToken(h http.Handler) http.Handler {
 		// создаем новый токен
 		// в настоящий момент нет системы авторизации/регистрации - мы генерируем новый userID в таких случаях
 		userID = uuid.New()
-		newTokenString, err := buildJWTString(userID, secretKey)
+		newTokenString, err := buildJWTString(userID, s.Config.SecretKey)
 		if err != nil {
 			logger.Log.Error("создание токена", zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)

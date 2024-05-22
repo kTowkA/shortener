@@ -254,7 +254,7 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	userID, err := getUserIDFromToken(token.Value, secretKey)
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -296,7 +296,7 @@ func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	userID, err := getUserIDFromToken(token.Value, secretKey)
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
