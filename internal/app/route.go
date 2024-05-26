@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
@@ -26,7 +27,7 @@ import (
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "text/plain") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "text/plain") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"text/plain", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -40,6 +41,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	// читаем тело
 	link, err := bufio.NewReader(r.Body).ReadString('\n')
 	if err != nil && err != io.EOF {
+		logger.Log.Error("wow2", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -57,8 +59,13 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
 		return
 	}
-	newLink, err := s.saveLink(r.Context(), link, attems)
-	w.Header().Set("content-type", "text/plain")
+
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	newLink, err := s.saveLink(r.Context(), userID, link, attems)
+	w.Header().Set("Content-Type", "text/plain")
 
 	if err != nil {
 		if errors.Is(err, storage.ErrURLConflict) {
@@ -66,6 +73,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(newLink))
 			return
 		}
+		logger.Log.Error("wow1", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -90,13 +98,15 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, storage.ErrURLNotFound.Error(), http.StatusNotFound)
 		return
 	} else if err != nil {
-		// сюда попасть мы не можем, других ошибок не возвращаем пока, это на будущее
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
+	if real.IsDeleted {
+		w.WriteHeader(http.StatusGone)
+		return
+	}
 	// успешно
-	w.Header().Set("Location", real)
+	w.Header().Set("Location", real.OriginalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
@@ -104,7 +114,7 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -135,7 +145,12 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conflict := false
-	newLink, err := s.saveLink(r.Context(), req.URL, attems)
+
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
 	if errors.Is(err, storage.ErrURLConflict) {
 		conflict = true
 	}
@@ -152,8 +167,8 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get("content-type") == "" {
-		w.Header().Set("content-type", "application/json")
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
 	}
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
@@ -176,7 +191,7 @@ func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("content-type"), "application/json") && !strings.HasPrefix(r.Header.Get("content-type"), "application/x-gzip") {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
 		return
 	}
@@ -208,8 +223,11 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
 		return
 	}
-
-	resp, err := s.saveBatch(r.Context(), req, attems)
+	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
+	if !ok {
+		userID = uuid.New()
+	}
+	resp, err := s.saveBatch(r.Context(), userID, req, attems)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -220,14 +238,103 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if w.Header().Get("content-type") == "" {
-		w.Header().Set("content-type", "application/json")
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write(result)
 }
+func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 
-func (s *Server) saveLink(ctx context.Context, link string, attems int) (string, error) {
+	// проверяем, что userID записан в cookie
+	token, err := r.Cookie(authCookie)
+	if err != nil && !errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	urls, err := s.db.UserURLs(r.Context(), userID)
+	if errors.Is(err, storage.ErrURLNotFound) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	for i := range urls {
+		urls[i].ShortURL = s.Config.BaseAddress + urls[i].ShortURL
+	}
+
+	result, err := json.MarshalIndent(urls, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(result)
+}
+func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	// проверяем, что контент тайп нужный
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
+		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
+		return
+	}
+
+	// проверяем, что userID записан в cookie
+	token, err := r.Cookie(authCookie)
+	if err != nil && !errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if errors.Is(err, http.ErrNoCookie) {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// проверяем, что тело существует
+	if r.Body == nil {
+		http.Error(w, "пустой запрос", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// работаем с телом ответа
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req := []string{}
+	err = json.Unmarshal(buf.Bytes(), &req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for i := range req {
+		s.deleteMessage <- model.DeleteURLMessage{
+			UserID:   userID.String(),
+			ShortURL: req[i],
+		}
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
 	const forUnique = "X"
 	genLink, err := generateSHA1(link, defaultLenght)
 	if err != nil {
@@ -236,32 +343,32 @@ func (s *Server) saveLink(ctx context.Context, link string, attems int) (string,
 
 	// создаем короткую ссылка за attems попыток генерации
 	for i := 0; i < attems; i++ {
-		genLink, err = s.db.SaveURL(ctx, link, genLink)
+		savedLink, err := s.db.SaveURL(ctx, userID, link, genLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
 			genLink = genLink + forUnique
 			continue
 		} else if errors.Is(err, storage.ErrURLConflict) {
-			return s.Config.BaseAddress + genLink, err
+			return s.Config.BaseAddress + savedLink, err
 		} else if err != nil {
 			return "", err
 		}
 
 		// успешно
-		return s.Config.BaseAddress + genLink, nil
+		return s.Config.BaseAddress + savedLink, nil
 	}
 
 	// не уложись в заданное количество попыток для создания короткой ссылки
 	return "", errors.New("не смогли создать короткую ссылку")
 }
-func (s *Server) saveBatch(ctx context.Context, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
+func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
 	result := make([]model.BatchResponseElement, 0, len(batch))
 	for i := 0; i < attems; i++ {
 		err := generateLinksBatch(batch)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := s.db.Batch(ctx, batch)
+		resp, err := s.db.Batch(ctx, userID, batch)
 		if err != nil {
 			return nil, err
 		}

@@ -10,6 +10,7 @@ const (
 	EnvServerAddress = "SERVER_ADDRESS"
 	EnvBaseURL       = "BASE_URL"
 	EnvDSN           = "DATABASE_DSN"
+	EnvSecretKey     = "SECRET_KEY"
 )
 
 var (
@@ -26,6 +27,7 @@ type Config struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	LogLevel        string
+	SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
 }
 
 func ParseConfig() (Config, error) {
