@@ -380,7 +380,7 @@ func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.Ba
 			if resp[i].Error != nil {
 				s.logger.Error("ошибка в batch",
 					slog.String("original_url", resp[i].OriginalURL),
-					slog.String("ошибка", err.Error()),
+					slog.String("ошибка", resp[i].Error.Error()),
 				)
 
 			}
