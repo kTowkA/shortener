@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.5.5
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
+	go.uber.org/zap/exp v0.2.0
 )
 
 require (

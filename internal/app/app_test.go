@@ -6,6 +6,7 @@ package app
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,15 +17,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var (
-	defaultAddress     = "http://localhost:8080"
-	defaultBaseAddress = "http://localhost:8080"
-
-	cfg = config.Config{
-		Address:     defaultAddress,
-		BaseAddress: defaultBaseAddress,
-	}
-)
+var defaultAddress = ""
 
 type (
 	header struct {
@@ -53,8 +46,12 @@ type (
 func (suite *appTestSuite) SetupSuite() {
 	suite.Suite.T().Log("Suite setup")
 
-	s, err := NewServer(cfg)
-	suite.NoError(err)
+	cfg, err := config.ParseConfig(slog.Default())
+	suite.Require().NoError(err)
+	defaultAddress = cfg.BaseAddress()
+
+	s, err := NewServer(cfg, slog.Default())
+	suite.Require().NoError(err)
 
 	storage, err := memory.NewStorage("")
 	suite.NoError(err)

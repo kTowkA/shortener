@@ -2,15 +2,19 @@ package config
 
 import (
 	"flag"
+	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/caarlos0/env/v6"
 )
 
 const (
-	EnvServerAddress = "SERVER_ADDRESS"
-	EnvBaseURL       = "BASE_URL"
-	EnvDSN           = "DATABASE_DSN"
-	EnvSecretKey     = "SECRET_KEY"
+	defaultSecretKey = "super strong secret key"
+
+	defaultAddress         = "localhost:8080"
+	defaultBaseAddress     = "http://localhost:8080"
+	defaultStorageFilePath = "/tmp/short-url-db.json"
 )
 
 var (
@@ -18,47 +22,87 @@ var (
 	flagB               string
 	flagStorageFilePath string
 	flagDatabaseDSN     string
-	logLevel            string
 )
 
 type Config struct {
-	Address         string `env:"SERVER_ADDRESS"`
-	BaseAddress     string `env:"BASE_URL"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
-	LogLevel        string
-	SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
+	address         string
+	baseAddress     string
+	fileStoragePath string
+	databaseDSN     string
+	secretKey       string
 }
 
-func ParseConfig() (Config, error) {
-	flag.StringVar(&flagA, "a", "localhost:8080", "address:host")
-	flag.StringVar(&flagB, "b", "http://localhost:8080", "result address")
+func (c *Config) Address() string {
+	return c.address
+}
+func (c *Config) BaseAddress() string {
+	return c.baseAddress
+}
+func (c *Config) FileStoragePath() string {
+	return c.fileStoragePath
+}
+func (c *Config) DatabaseDSN() string {
+	return c.databaseDSN
+}
+func (c *Config) SecretKey() string {
+	return c.secretKey
+}
+
+func ParseConfig(logger *slog.Logger) (Config, error) {
+	flag.StringVar(&flagA, "a", defaultAddress, "address:host")
+	flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")
 	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
-	flag.StringVar(&flagStorageFilePath, "f", "/tmp/short-url-db.json", "file on disk with db")
-	flag.StringVar(&logLevel, "l", "info", "level (panic,fatal,error,warn,info,debug,trace)")
+	flag.StringVar(&flagStorageFilePath, "f", defaultStorageFilePath, "file on disk with db")
 
 	flag.Parse()
 
-	cfg := Config{
-		LogLevel: logLevel,
+	type PublicConfig struct {
+		Address         string `env:"SERVER_ADDRESS"`
+		BaseAddress     string `env:"BASE_URL"`
+		FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
+		DatabaseDSN     string `env:"DATABASE_DSN"`
+		SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
 	}
+
+	cfg := PublicConfig{}
 	err := env.Parse(&cfg)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("сопостовление переменных окружения с объектом конфигурации. %w", err)
 	}
 
 	if cfg.Address == "" {
+		logger.Debug("адрес приложения. используется значение флага")
 		cfg.Address = flagA
 	}
 
 	if cfg.BaseAddress == "" {
+		logger.Debug("базовый адрес шортера. используется значение флага")
 		cfg.BaseAddress = flagB
 	}
+	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
+
 	if cfg.DatabaseDSN == "" {
+		logger.Debug("строка соединения с БД. используется значение флага")
 		cfg.DatabaseDSN = flagDatabaseDSN
 	}
 	if cfg.FileStoragePath == "" {
+		logger.Debug("путь к файлу-хранилищу. используется значение флага")
 		cfg.FileStoragePath = flagStorageFilePath
 	}
-	return cfg, nil
+	if cfg.SecretKey == "" {
+		cfg.SecretKey = defaultSecretKey
+	}
+	logger.Debug("конфигурация",
+		slog.String("адрес", cfg.Address),
+		slog.String("базовый адрес", cfg.BaseAddress),
+		slog.String("путь к файлу-хранилищу", cfg.FileStoragePath),
+		slog.String("строка соединения с БД", cfg.DatabaseDSN),
+	)
+	return Config{
+		address:         cfg.Address,
+		baseAddress:     cfg.BaseAddress,
+		fileStoragePath: cfg.FileStoragePath,
+		databaseDSN:     cfg.DatabaseDSN,
+		secretKey:       cfg.SecretKey,
+	}, nil
 }

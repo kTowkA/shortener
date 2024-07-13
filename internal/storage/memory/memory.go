@@ -11,10 +11,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
-	"go.uber.org/zap"
 )
 
 type Storage struct {
@@ -110,7 +108,6 @@ func restoreFromFile(filename string) (map[string]model.StorageJSONWithUserID, e
 		element := model.StorageJSONWithUserID{}
 		err = json.Unmarshal(raw, &element)
 		if err != nil {
-			logger.Log.Error("раскодирование элемента", zap.Error(err))
 			continue
 		}
 		elements[element.ShortURL] = element

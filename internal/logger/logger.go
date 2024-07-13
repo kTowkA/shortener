@@ -1,38 +1,48 @@
 package logger
 
 import (
+	"fmt"
+	"log/slog"
+
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/exp/zapslog"
 )
 
-var Log *zap.Logger = zap.NewNop()
-
-func New(level zapcore.Level) error {
-	cfg := zap.NewProductionConfig()
-	cfg.Level.SetLevel(level)
-	zl, err := cfg.Build()
-	if err != nil {
-		return err
-	}
-	Log = zl
-	return nil
+type Log struct {
+	*slog.Logger
+	zl *zap.Logger
 }
 
-func LevelFromString(level string) zapcore.Level {
-	switch level {
-	case "panic":
-		return zapcore.PanicLevel
-	case "fatal":
-		return zapcore.FatalLevel
-	case "error":
-		return zapcore.ErrorLevel
-	case "warn":
-		return zapcore.WarnLevel
-	case "info":
-		return zapcore.InfoLevel
-	case "debug":
-		return zapcore.DebugLevel
-	default:
-		return zapcore.InfoLevel
+func NewLogger(level slog.Level) (*Log, error) {
+	zc := zap.NewProductionConfig()
+	zc.OutputPaths = []string{
+		"stdout",
 	}
+	zc.Encoding = "json"
+
+	if level != slog.LevelInfo {
+		switch level {
+		case slog.LevelWarn:
+			zc.Level.SetLevel(zap.WarnLevel)
+		case slog.LevelDebug:
+			zc.Level.SetLevel(zap.DebugLevel)
+		case slog.LevelError:
+			zc.Level.SetLevel(zap.ErrorLevel)
+		}
+	}
+
+	l, err := zc.Build()
+	if err != nil {
+		return nil, fmt.Errorf("создание логера. сборка zap логера. %w", err)
+	}
+	return &Log{
+		Logger: slog.New(zapslog.NewHandler(l.Core(), nil)),
+		zl:     l,
+	}, nil
+}
+
+// Close закрытие логера
+func (l *Log) Close() {
+	// На ошибку не проверяем, там было открыто issue и разработчики советовали пропустить, на unix-системах возвращает не nil
+	_ = l.zl.Sync()
 }

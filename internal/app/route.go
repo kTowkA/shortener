@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -17,10 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
-	"go.uber.org/zap"
 )
 
 // encodeURL обработчик для кодирования входящего урла
@@ -41,7 +40,6 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	// читаем тело
 	link, err := bufio.NewReader(r.Body).ReadString('\n')
 	if err != nil && err != io.EOF {
-		logger.Log.Error("wow2", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -73,7 +71,6 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(newLink))
 			return
 		}
-		logger.Log.Error("wow1", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -182,7 +179,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Ping(r.Context())
 	if err != nil {
-		logger.Log.Error("проверка на доступность БД", zap.Error(err))
+		s.logger.Error("проверка на доступность БД", slog.String("ошибка", err.Error()))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -256,7 +253,7 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -267,7 +264,7 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range urls {
-		urls[i].ShortURL = s.Config.BaseAddress + urls[i].ShortURL
+		urls[i].ShortURL = s.Config.BaseAddress() + urls[i].ShortURL
 	}
 
 	result, err := json.MarshalIndent(urls, "", "  ")
@@ -298,7 +295,7 @@ func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey)
+	userID, err := getUserIDFromToken(token.Value, s.Config.SecretKey())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -349,13 +346,13 @@ func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, at
 			genLink = genLink + forUnique
 			continue
 		} else if errors.Is(err, storage.ErrURLConflict) {
-			return s.Config.BaseAddress + savedLink, err
+			return s.Config.BaseAddress() + savedLink, err
 		} else if err != nil {
 			return "", err
 		}
 
 		// успешно
-		return s.Config.BaseAddress + savedLink, nil
+		return s.Config.BaseAddress() + savedLink, nil
 	}
 
 	// не уложись в заданное количество попыток для создания короткой ссылки
@@ -376,12 +373,16 @@ func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.Ba
 		batch = make(model.BatchRequest, 0)
 		for i := range resp {
 			if resp[i].ShortURL != "" {
-				resp[i].ShortURL = s.Config.BaseAddress + resp[i].ShortURL
+				resp[i].ShortURL = s.Config.BaseAddress() + resp[i].ShortURL
 				result = append(result, resp[i])
 				continue
 			}
 			if resp[i].Error != nil {
-				logger.Log.Error("ошибка в batch", zap.String("original_url", resp[i].OriginalURL), zap.Error(err))
+				s.logger.Error("ошибка в batch",
+					slog.String("original_url", resp[i].OriginalURL),
+					slog.String("ошибка", err.Error()),
+				)
+
 			}
 			// если были колизии пробуем сохранить с добавлением подстроки
 			if resp[i].Collision {
@@ -398,7 +399,10 @@ func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.Ba
 	}
 	// не смогли уложиться в заданное количество попыток для сохранения всех ссылок
 	if len(batch) != 0 {
-		logger.Log.Debug("не смогли уложиться в заданное количество попыток для сохранения всех ссылок", zap.Int("сохранено", len(result)), zap.Int("не сохранено", len(batch)))
+		s.logger.Debug("не смогли уложиться в заданное количество попыток для сохранения всех ссылок",
+			slog.Int("сохранено", len(result)),
+			slog.Int("не сохранено", len(batch)),
+		)
 		return nil, fmt.Errorf("не было сохранено %d записей", len(batch))
 	}
 	return result, nil
