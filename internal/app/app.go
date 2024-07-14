@@ -119,7 +119,7 @@ func (s *Server) setStorage() error {
 		err       error
 	)
 	if s.Config.DatabaseDSN() != "" {
-		err := migrations.MigrationsUP(s.Config.DatabaseDSN())
+		err = migrations.MigrationsUP(s.Config.DatabaseDSN())
 		if err != nil {
 			s.logger.Error("проведение миграций при подключении к БД", slog.String("ошибка", err.Error()))
 			return err

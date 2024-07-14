@@ -13,7 +13,7 @@ const (
 	defaultSecretKey = "super strong secret key"
 
 	defaultAddress         = "localhost:8080"
-	defaultBaseAddress     = "http://localhost:8080"
+	defaultBaseAddress     = "http://localhost:8080/"
 	defaultStorageFilePath = "/tmp/short-url-db.json"
 )
 
@@ -46,6 +46,13 @@ func (c *Config) DatabaseDSN() string {
 }
 func (c *Config) SecretKey() string {
 	return c.secretKey
+}
+
+var DefaultConfig = Config{
+	address:         defaultAddress,
+	baseAddress:     defaultBaseAddress,
+	fileStoragePath: defaultStorageFilePath,
+	secretKey:       defaultSecretKey,
 }
 
 func ParseConfig(logger *slog.Logger) (Config, error) {

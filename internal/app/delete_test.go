@@ -35,15 +35,15 @@ var tmpURL = "https://practicum.yandex.ru/learn/go-advanced/courses/"
 
 func (suite *appDeleteTestSuite) SetupSuite() {
 	suite.Suite.T().Log("Suite setup")
-
-	cfg, err := config.ParseConfig(slog.Default())
-	suite.Require().NoError(err)
-
-	var myStorage storage.Storager
+	cfg := config.DefaultConfig
+	var (
+		myStorage storage.Storager
+		err       error
+	)
 	if cfg.DatabaseDSN() != "" {
 		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
 	} else {
-		myStorage, err = memory.NewStorage(cfg.DatabaseDSN())
+		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
 	}
 	suite.Require().NoError(err)
 

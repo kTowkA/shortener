@@ -46,11 +46,9 @@ type (
 func (suite *appTestSuite) SetupSuite() {
 	suite.Suite.T().Log("Suite setup")
 
-	cfg, err := config.ParseConfig(slog.Default())
-	suite.Require().NoError(err)
-	defaultAddress = cfg.BaseAddress()
+	defaultAddress = config.DefaultConfig.BaseAddress()
 
-	s, err := NewServer(cfg, slog.Default())
+	s, err := NewServer(config.DefaultConfig, slog.Default())
 	suite.Require().NoError(err)
 
 	storage, err := memory.NewStorage("")
