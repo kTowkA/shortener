@@ -22,14 +22,14 @@ func main() {
 	defer customLog.Close()
 
 	// конфигурация
-	cfg, err := config.ParseConfig(customLog.WithGroup("конфигуратор"))
+	cfg, err := config.ParseConfig(customLog.Logger)
 	if err != nil {
 		customLog.Error("загрузка конфигурации", slog.String("ошибка", err.Error()))
 		return
 	}
 
 	// приложение
-	srv, err := app.NewServer(cfg, customLog.WithGroup("приложение"))
+	srv, err := app.NewServer(cfg, customLog.Logger)
 	if err != nil {
 		customLog.Error("создание сервера приложения", slog.String("ошибка", err.Error()))
 		return

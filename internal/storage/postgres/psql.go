@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -20,42 +21,14 @@ type PStorage struct {
 }
 
 func NewStorage(ctx context.Context, dsn string) (*PStorage, error) {
+	log.Println(1)
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("создание клиента postgres. %w", err)
 	}
+	log.Println(2)
 	storage := &PStorage{pool}
-	err = storage.bootstrap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("инициализация БД таблицами. %w", err)
-	}
 	return storage, nil
-}
-
-func (p *PStorage) bootstrap(ctx context.Context) error {
-	tx, err := p.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(
-		ctx,
-		`
-		CREATE TABLE IF NOT EXISTS url_list (
-			uuid uuid,
-			user_id uuid,
-			short_url text,
-			original_url text,
-			is_deleted bool,
-			PRIMARY KEY(uuid),
-			UNIQUE(short_url),
-			UNIQUE(original_url)
-		);		
-		`,
-	)
-	if err != nil {
-		return tx.Rollback(ctx)
-	}
-	return tx.Commit(ctx)
 }
 
 // реализация интерфейса Storager

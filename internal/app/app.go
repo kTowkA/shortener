@@ -14,6 +14,7 @@ import (
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
 	"github.com/kTowkA/shortener/internal/storage/postgres"
+	"github.com/kTowkA/shortener/internal/storage/postgres/migrations"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -107,11 +108,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return nil
 	})
 
-	// обработка сообщений на удаление
-	gr.Go(func() error {
-		s.flushDeleteMessages()
-		return nil
-	})
+	go s.flushDeleteMessages()
 
 	return gr.Wait()
 }
@@ -122,6 +119,11 @@ func (s *Server) setStorage() error {
 		err       error
 	)
 	if s.Config.DatabaseDSN() != "" {
+		err := migrations.MigrationsUP(s.Config.DatabaseDSN())
+		if err != nil {
+			s.logger.Error("проведение миграций при подключении к БД", slog.String("ошибка", err.Error()))
+			return err
+		}
 		myStorage, err = postgres.NewStorage(context.Background(), s.Config.DatabaseDSN())
 	} else {
 		myStorage, err = memory.NewStorage(s.Config.FileStoragePath())
@@ -129,6 +131,7 @@ func (s *Server) setStorage() error {
 	if err != nil {
 		return fmt.Errorf("создание хранилища данных. %w", err)
 	}
+	s.logger.Info("утановлено хранилище")
 	s.db = myStorage
 	return nil
 }
