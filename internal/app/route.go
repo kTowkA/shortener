@@ -236,7 +236,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(http.StatusCreated)
-	w.Write(result)
+	_, _ = w.Write(result)
 }
 func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 
@@ -273,7 +273,7 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write(result)
+	_, _ = w.Write(result)
 }
 func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,9 +14,6 @@ import (
 	"github.com/kTowkA/shortener/internal/config"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
-	"github.com/kTowkA/shortener/internal/storage/memory"
-	"github.com/kTowkA/shortener/internal/storage/postgres"
-	"github.com/kTowkA/shortener/internal/storage/postgres/migrations"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -96,27 +92,6 @@ func (s *Server) Run(ctx context.Context, storage storage.Storager) error {
 	go s.flushDeleteMessages()
 
 	return gr.Wait()
-}
-
-func setStorage(cfg config.Config) (storage.Storager, error) {
-	var (
-		myStorage storage.Storager
-		err       error
-	)
-	if cfg.DatabaseDSN() != "" {
-		err = migrations.MigrationsUP(cfg.DatabaseDSN())
-		if err != nil {
-			return nil, err
-		}
-		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
-	} else {
-		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
-	}
-	if err != nil {
-		return nil, fmt.Errorf("создание хранилища данных. %w", err)
-	}
-
-	return myStorage, nil
 }
 
 func (s *Server) setRoute() {
