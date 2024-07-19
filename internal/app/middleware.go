@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	authCookie      = "jwt"
-	TokenExp12Hours = 12 * time.Hour
+	authCookie = "jwt"
 )
+
+// TokenExp12Hours константа для установления время жизни токена в 12 часов
+const TokenExp12Hours = 12 * time.Hour
 
 type contextKey string
 
@@ -38,12 +40,14 @@ type loggingResponseWriter struct {
 	responseData *responseData
 }
 
+// Write реализация кастомного http.ResponseWriter
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
 	return size, err
 }
 
+// WriteHeader реализация кастомного http.ResponseWriter
 func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode
@@ -87,14 +91,17 @@ type (
 	}
 )
 
+// Write реализация кастомного http.ResponseWriter
 func (gzw *gzipWriter) Write(p []byte) (int, error) {
 	return gzw.gzw.Write(p)
 }
 
+// Read реализация кастомного http.ResponseWriter
 func (gzr *gzipReader) Read(p []byte) (n int, err error) {
 	return gzr.gzr.Read(p)
 }
 
+// Close реализация кастомного http.ResponseWriter
 func (gzr *gzipReader) Close() error {
 	if err := gzr.orig.Close(); err != nil {
 		return err

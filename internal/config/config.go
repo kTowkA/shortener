@@ -1,3 +1,4 @@
+// модуль config отвечает за создание экземпляра конфигурации из переменных окружения, флагов запуска и значений по умолчанию
 package config
 
 import (
@@ -24,6 +25,7 @@ var (
 	flagDatabaseDSN     string
 )
 
+// Config конфигурация приложения
 type Config struct {
 	address         string
 	baseAddress     string
@@ -32,22 +34,32 @@ type Config struct {
 	secretKey       string
 }
 
+// Address возвращает строку с адресом запускаемого сервера
 func (c *Config) Address() string {
 	return c.address
 }
+
+// BaseAddress возвращает строку с базовым адресом для сокращения ссылок
 func (c *Config) BaseAddress() string {
 	return c.baseAddress
 }
+
+// FileStoragePath возвращает строку с файлом-хранилищем
 func (c *Config) FileStoragePath() string {
 	return c.fileStoragePath
 }
+
+// DatabaseDSN возвращает строку для подключения к БД
 func (c *Config) DatabaseDSN() string {
 	return c.databaseDSN
 }
+
+// SecretKey возвращает строку содержащую секретный ключ
 func (c *Config) SecretKey() string {
 	return c.secretKey
 }
 
+// DefaultConfig конфигурация по умолчанию для быстрой настройки
 var DefaultConfig = Config{
 	address:         defaultAddress,
 	baseAddress:     defaultBaseAddress,
@@ -55,6 +67,7 @@ var DefaultConfig = Config{
 	secretKey:       defaultSecretKey,
 }
 
+// ParseConfig запускает создание конфигурации читая значения переменных окружения и флагов командной строки
 func ParseConfig(logger *slog.Logger) (Config, error) {
 	flag.StringVar(&flagA, "a", defaultAddress, "address:host")
 	flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")

@@ -8,11 +8,13 @@ import (
 	"go.uber.org/zap/exp/zapslog"
 )
 
+// Log структура логгера с логером типа slog и бэкендом в виде zap
 type Log struct {
 	*slog.Logger
 	zl *zap.Logger
 }
 
+// NewLogger создает новый логер с уровнем level
 func NewLogger(level slog.Level) (*Log, error) {
 	zc := zap.NewProductionConfig()
 	zc.OutputPaths = []string{

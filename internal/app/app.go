@@ -1,3 +1,5 @@
+// модуль app отвечает за настройку и запуск сервера сокращателя ссылок.
+// он поднимает сервер необходимые роуты, объявленные в задании
 package app
 
 import (
@@ -26,6 +28,8 @@ const (
 	defaultLenght = 10
 )
 
+// Server структура сервер служит для создания экземпляра запускаемого сервера.
+// содержит только неэкспортируемые поля, включающие в себя хранилище данных, логгер и собственно сам веб-сервер
 type Server struct {
 	db            storage.Storager
 	Config        config.Config
@@ -34,6 +38,8 @@ type Server struct {
 	server        *http.Server
 }
 
+// NewServer создает новый экземпляр сервера с конфигурацией cfg и логером logger.
+// Возвращает сервер и ошибку
 func NewServer(cfg config.Config, logger *slog.Logger) (*Server, error) {
 	return &Server{
 		Config: cfg,
@@ -45,6 +51,7 @@ func NewServer(cfg config.Config, logger *slog.Logger) (*Server, error) {
 	}, nil
 }
 
+// Run запуск сервера с указанием контекста для отмены ctx и хранилища storage
 func (s *Server) Run(ctx context.Context, storage storage.Storager) error {
 	s.db = storage
 

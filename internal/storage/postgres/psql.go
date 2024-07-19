@@ -16,10 +16,14 @@ import (
 	"github.com/kTowkA/shortener/internal/storage"
 )
 
+// PStorage структура дря реализации интерфейса Storager
 type PStorage struct {
 	*pgxpool.Pool
 }
 
+// NewStorage создает новый экземпляр хранилища PStorage.
+// На вход подаются контекст отмены ctx и строка для подключения к СУБД dsn.
+// возвращает экземпляр PStorage и возможную ошибку
 func NewStorage(ctx context.Context, dsn string) (*PStorage, error) {
 	log.Println(1)
 	pool, err := pgxpool.New(ctx, dsn)
@@ -31,7 +35,7 @@ func NewStorage(ctx context.Context, dsn string) (*PStorage, error) {
 	return storage, nil
 }
 
-// реализация интерфейса Storager
+// SaveURL реализация интерфейса Storager
 func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
 	resp, err := p.Batch(
 		ctx,
@@ -54,6 +58,8 @@ func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short st
 	}
 	return resp[0].ShortURL, nil
 }
+
+// RealURL реализация интерфейса Storager
 func (p *PStorage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
 	answ := model.StorageJSON{}
 	err := p.QueryRow(
@@ -72,14 +78,19 @@ func (p *PStorage) RealURL(ctx context.Context, short string) (model.StorageJSON
 	}
 	return answ, nil
 }
+
+// Ping реализация интерфейса Storager
 func (p *PStorage) Ping(ctx context.Context) error {
 	return p.Pool.Ping(ctx)
 }
+
+// Close реализация интерфейса Storager
 func (p *PStorage) Close() error {
 	p.Pool.Close()
 	return nil
 }
 
+// Batch реализация интерфейса Storager
 func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
 	tx, err := p.Begin(ctx)
 	if err != nil {
@@ -170,6 +181,8 @@ func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.Bat
 
 	return result, nil
 }
+
+// DeleteURLs реализация интерфейса Storager
 func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
 	tx, err := p.Begin(ctx)
 	if err != nil {
@@ -235,6 +248,7 @@ func (p *PStorage) short(ctx context.Context, real string, userID uuid.UUID) (st
 	return short, nil
 }
 
+// UserURLs реализация интерфейса Storager
 func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
 	rows, err := p.Query(
 		ctx,

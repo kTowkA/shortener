@@ -15,6 +15,9 @@ import (
 //go:embed migrations/*.sql
 var fs embed.FS
 
+// MigrationsUP проведение начальной инициализации БД типа postgres.
+// connString строка-подключение.
+// возвращает возможную ошибку или nil
 func MigrationsUP(connString string) error {
 	log.Println(0)
 	d, err := iofs.New(fs, "migrations")
