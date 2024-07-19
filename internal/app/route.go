@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"log"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -36,15 +36,17 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
+	defer r.Body.Close()
 
 	// читаем тело
-	link, err := bufio.NewReader(r.Body).ReadString('\n')
-	if err != nil && err != io.EOF {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	sc := bufio.NewScanner(r.Body)
+	link := ""
+	for sc.Scan() {
+		link = strings.TrimSpace(sc.Text())
+		if link != "" {
+			break
+		}
 	}
-	defer r.Body.Close()
-	link = strings.TrimSpace(link)
 
 	// проверяем, что запрос не пуст
 	if link == "" {
@@ -52,7 +54,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// проверяем, что это ссылка
-	_, err = url.ParseRequestURI(link)
+	_, err := url.ParseRequestURI(link)
 	if err != nil {
 		http.Error(w, "невалидная ссылка", http.StatusBadRequest)
 		return
@@ -62,13 +64,14 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		userID = uuid.New()
 	}
-	newLink, err := s.saveLink(r.Context(), userID, link, attems)
+
 	w.Header().Set("Content-Type", "text/plain")
 
+	newLink, err := s.saveLink(r.Context(), userID, link, attems)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLConflict) {
 			w.WriteHeader(http.StatusConflict)
-			w.Write([]byte(newLink))
+			_, _ = w.Write([]byte(newLink))
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -76,18 +79,20 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(newLink))
+	_, _ = w.Write([]byte(newLink))
 }
 
 // decodeURL обработчик для декодирования короткой ссылки
 func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 
 	// проверяем что есть подзапрос
-	short := strings.Trim(r.URL.Path, "/")
-	if short == "" {
+	short := r.URL.Path
+	if short == "/" {
 		http.Error(w, "пустой подзапрос", http.StatusBadRequest)
 		return
 	}
+
+	short = strings.Trim(short, "/")
 
 	real, err := s.db.RealURL(r.Context(), short)
 	// ничего не нашли
@@ -110,12 +115,6 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 // apiShorten обработчик для API
 func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 
-	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
-		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
-		return
-	}
-
 	// проверяем, что тело существует
 	if r.Body == nil {
 		http.Error(w, "пустой запрос", http.StatusBadRequest)
@@ -129,6 +128,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	req := model.RequestShortURL{}
 	err = json.Unmarshal(buf.Bytes(), &req)
 	if err != nil {
@@ -169,17 +169,16 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
-		w.Write(resp)
+		_, _ = w.Write(resp)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
-	w.Write(resp)
+	_, _ = w.Write(resp)
 }
 
 func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Ping(r.Context())
 	if err != nil {
-		s.logger.Error("проверка на доступность БД", slog.String("ошибка", err.Error()))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -187,15 +186,11 @@ func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
-	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
-		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
-		return
-	}
 
 	// проверяем, что тело существует
 	if r.Body == nil {
 		http.Error(w, "пустой запрос", http.StatusBadRequest)
+		s.logger.Error("пустой запрос")
 		return
 	}
 
@@ -211,13 +206,15 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(buf.Bytes(), &req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.logger.Error("Unmarshal")
 		return
 	}
-
+	log.Println(req)
 	req = validateBatch(req)
 	// проверяем, что есть запросы
 	if len(req) == 0 {
 		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
+		s.logger.Error("пустой batch")
 		return
 	}
 	userID, ok := r.Context().Value(contextKey("userID")).(uuid.UUID)
@@ -279,11 +276,6 @@ func (s *Server) getUserURLs(w http.ResponseWriter, r *http.Request) {
 	w.Write(result)
 }
 func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
-	// проверяем, что контент тайп нужный
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
-		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"application/json", "application/x-gzip"}), http.StatusBadRequest)
-		return
-	}
 
 	// проверяем, что userID записан в cookie
 	token, err := r.Cookie(authCookie)
@@ -410,22 +402,24 @@ func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.Ba
 func generateSHA1(original string, lenght int) (string, error) {
 	// получаем sha1
 	sum := sha1.Sum([]byte(original))
-
-	// получаем массив символов длиной lenght
-	symbols := strings.Split(hex.EncodeToString(sum[:]), "")[:lenght]
-
+	symbols := hex.EncodeToString(sum[:])
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// тут случайный символ переводим в верхней регистр (чтобы избежать совпадений)
 	result := strings.Builder{}
-	for _, s := range symbols {
-		change := r.Intn(2)
+	result.Grow(20)
+	change := 0
+	for _, rs := range symbols {
+		s := string(rs)
+		change = r.Intn(2)
 		if change == 1 {
 			s = strings.ToUpper(s)
 		}
 		_, err := result.WriteString(s)
 		if err != nil {
 			return "", err
+		}
+		if result.Len() == lenght {
+			break
 		}
 	}
 	return result.String(), nil

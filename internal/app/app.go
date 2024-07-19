@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/kTowkA/shortener/internal/config"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
@@ -36,41 +39,23 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config, logger *slog.Logger) (*Server, error) {
-
-	// не должно так быть, хранилище инициализируется при запуске ниже, но без этого не проходят тесты
-	// storage, err := memory.NewStorage("")
-	// if err != nil {
-	// 	return nil, fmt.Errorf("создание сервера. %w", err)
-	// }
 	return &Server{
 		Config: cfg,
 		logger: logger,
 		server: &http.Server{
 			Addr: cfg.Address(),
 		},
-		// db:            storage,
 		deleteMessage: make(chan model.DeleteURLMessage, 100),
 	}, nil
 }
 
-func (s *Server) Run(ctx context.Context) error {
-	err := s.setStorage()
-	if err != nil {
-		s.logger.Error("установка хранилища данных", slog.String("ошибка", err.Error()))
-		return err
-	}
+func (s *Server) Run(ctx context.Context, storage storage.Storager) error {
+	s.db = storage
 
 	s.setRoute()
 
 	// создание группы
 	gr, grCtx := errgroup.WithContext(ctx)
-
-	// обработка правильного завершения работы с хранилищем
-	gr.Go(func() error {
-		defer s.logger.Info("хранилище закрыто")
-		<-grCtx.Done()
-		return s.db.Close()
-	})
 
 	// запуск приложения
 	gr.Go(func() error {
@@ -113,27 +98,25 @@ func (s *Server) Run(ctx context.Context) error {
 	return gr.Wait()
 }
 
-func (s *Server) setStorage() error {
+func setStorage(cfg config.Config) (storage.Storager, error) {
 	var (
 		myStorage storage.Storager
 		err       error
 	)
-	if s.Config.DatabaseDSN() != "" {
-		err = migrations.MigrationsUP(s.Config.DatabaseDSN())
+	if cfg.DatabaseDSN() != "" {
+		err = migrations.MigrationsUP(cfg.DatabaseDSN())
 		if err != nil {
-			s.logger.Error("проведение миграций при подключении к БД", slog.String("ошибка", err.Error()))
-			return err
+			return nil, err
 		}
-		myStorage, err = postgres.NewStorage(context.Background(), s.Config.DatabaseDSN())
+		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
 	} else {
-		myStorage, err = memory.NewStorage(s.Config.FileStoragePath())
+		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
 	}
 	if err != nil {
-		return fmt.Errorf("создание хранилища данных. %w", err)
+		return nil, fmt.Errorf("создание хранилища данных. %w", err)
 	}
-	s.logger.Info("утановлено хранилище")
-	s.db = myStorage
-	return nil
+
+	return myStorage, nil
 }
 
 func (s *Server) setRoute() {
@@ -145,22 +128,24 @@ func (s *Server) setRoute() {
 		r.Post("/", s.encodeURL)
 		r.Get("/{short}", s.decodeURL)
 		r.Route("/api", func(r chi.Router) {
-			r.Route("/shorten", func(r chi.Router) {
-				r.Post("/", s.apiShorten)
-				r.Post("/batch", s.batch)
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.AllowContentType("application/json", "application/x-gzip"))
+				r.Route("/shorten", func(r chi.Router) {
+					r.Post("/", s.apiShorten)
+					r.Post("/batch", s.batch)
+				})
+				r.Delete("/user/urls", s.deleteUserURLs)
 			})
-			r.Route("/user", func(r chi.Router) {
-				r.Get("/urls", s.getUserURLs)
-				r.Delete("/urls", s.deleteUserURLs)
-			})
+			r.Get("/user/urls", s.getUserURLs)
 		})
 		r.Get("/ping", s.ping)
 	})
+	mux.Mount("/debug", middleware.Profiler())
 	s.server.Handler = mux
 }
 
 func (s *Server) flushDeleteMessages() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 
 	var messages []model.DeleteURLMessage
 

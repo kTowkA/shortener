@@ -25,7 +25,7 @@ type DeleteURLMessage struct {
 type BatchRequest []BatchRequestElement
 type BatchRequestElement struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
-	OriginalURL   string `json:"original_url,omitempty"`
+	OriginalURL   string `json:"original_url"`
 	ShortURL      string `json:"-"`
 }
 

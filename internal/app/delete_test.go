@@ -41,18 +41,20 @@ func (suite *appDeleteTestSuite) SetupSuite() {
 		err       error
 	)
 	if cfg.DatabaseDSN() != "" {
+		suite.Suite.T().Log("database")
 		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
 	} else {
+		suite.Suite.T().Log("file")
 		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
 	}
 	suite.Require().NoError(err)
 
 	s, err := NewServer(cfg, slog.Default())
 	suite.Require().NoError(err)
-	s.db = myStorage
+	// s.db = myStorage
 
 	suite.server = s
-	go s.Run(context.Background())
+	go s.Run(context.Background(), myStorage)
 	time.Sleep(3 * time.Second)
 }
 

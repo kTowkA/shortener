@@ -118,15 +118,6 @@ func (suite *appTestSuite) SetupTest() {
 	}
 	suite.tests["api shorten"] = []test{
 		{
-			name:    "неправильный content-type в запросе, валидный url",
-			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "text/plain"}),
-			want: want{
-				response: wantResponse{
-					code: http.StatusBadRequest,
-				},
-			},
-		},
-		{
 			name:    "правильный content-type в запросе, пустое тело запроса",
 			request: createTestRequest(http.MethodPost, defaultAddress, nil, header{"content-type", "application/json"}),
 			want: want{
@@ -262,7 +253,7 @@ func (suite *appTestSuite) TestCaseAPIShorten() {
 			w := httptest.NewRecorder()
 			suite.server.apiShorten(w, subt.request)
 			response := w.Result()
-			suite.Equal(subt.want.response.code, response.StatusCode)
+			suite.Equal(subt.want.response.code, response.StatusCode, subt.name)
 			err := response.Body.Close()
 			suite.NoError(err)
 		}
