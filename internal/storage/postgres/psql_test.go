@@ -1,3 +1,6 @@
+//go:build integrations
+// +build integrations
+
 package postgres
 
 import (
