@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -25,12 +24,10 @@ type PStorage struct {
 // На вход подаются контекст отмены ctx и строка для подключения к СУБД dsn.
 // возвращает экземпляр PStorage и возможную ошибку
 func NewStorage(ctx context.Context, dsn string) (*PStorage, error) {
-	log.Println(1)
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("создание клиента postgres. %w", err)
 	}
-	log.Println(2)
 	storage := &PStorage{pool}
 	return storage, nil
 }
@@ -188,7 +185,6 @@ func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURL
 	if err != nil {
 		return fmt.Errorf("создание транзакции. %w", err)
 	}
-
 	// проходим по нашим значениям и создаем batch
 	b := pgx.Batch{}
 	for _, v := range deleteLinks {
@@ -203,7 +199,6 @@ func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURL
 	br := tx.SendBatch(ctx, &b)
 
 	grpErrors := make([]error, 0, len(deleteLinks))
-
 	for _, v := range deleteLinks {
 		tc, err := br.Exec()
 		switch {
@@ -252,7 +247,7 @@ func (p *PStorage) short(ctx context.Context, real string, userID uuid.UUID) (st
 func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
 	rows, err := p.Query(
 		ctx,
-		"SELECT short_url,original_url FROM url_list WHERE user_id=$1",
+		"SELECT short_url,original_url,is_deleted FROM url_list WHERE user_id=$1",
 		userID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -265,7 +260,7 @@ func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stor
 	results := make([]model.StorageJSON, 0)
 	for rows.Next() {
 		r := model.StorageJSON{}
-		err = rows.Scan(&r.ShortURL, &r.OriginalURL)
+		err = rows.Scan(&r.ShortURL, &r.OriginalURL, &r.IsDeleted)
 		if err != nil {
 			return nil, fmt.Errorf("получение отдельной записи для пользователя. %w", err)
 		}
