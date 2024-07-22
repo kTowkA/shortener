@@ -90,28 +90,15 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("сопостовление переменных окружения с объектом конфигурации. %w", err)
 	}
 
-	if cfg.Address == "" {
-		logger.Debug("адрес приложения. используется значение флага")
-		cfg.Address = flagA
-	}
+	cfg.Address = setConfigValue(cfg.Address, flagA, defaultAddress)
 
-	if cfg.BaseAddress == "" {
-		logger.Debug("базовый адрес шортера. используется значение флага")
-		cfg.BaseAddress = flagB
-	}
+	cfg.BaseAddress = setConfigValue(cfg.BaseAddress, flagB, defaultBaseAddress)
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
 
-	if cfg.DatabaseDSN == "" {
-		logger.Debug("строка соединения с БД. используется значение флага")
-		cfg.DatabaseDSN = flagDatabaseDSN
-	}
-	if cfg.FileStoragePath == "" {
-		logger.Debug("путь к файлу-хранилищу. используется значение флага")
-		cfg.FileStoragePath = flagStorageFilePath
-	}
-	if cfg.SecretKey == "" {
-		cfg.SecretKey = defaultSecretKey
-	}
+	cfg.DatabaseDSN = setConfigValue(cfg.DatabaseDSN, flagDatabaseDSN, "")
+	cfg.FileStoragePath = setConfigValue(cfg.FileStoragePath, flagStorageFilePath, defaultStorageFilePath)
+	cfg.SecretKey = setConfigValue(cfg.SecretKey, "", defaultSecretKey)
+
 	logger.Debug("конфигурация",
 		slog.String("адрес", cfg.Address),
 		slog.String("базовый адрес", cfg.BaseAddress),
@@ -125,4 +112,14 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		databaseDSN:     cfg.DatabaseDSN,
 		secretKey:       cfg.SecretKey,
 	}, nil
+}
+
+func setConfigValue(envValue, flagValue, defaultValue string) string {
+	if envValue == "" {
+		if flagValue != "" {
+			return flagValue
+		}
+		return defaultValue
+	}
+	return envValue
 }

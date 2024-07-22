@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -19,10 +20,7 @@ import (
 
 func main() {
 	// логгер
-	customLog, err := logger.NewLogger(slog.LevelDebug)
-	if err != nil {
-		log.Fatalf("создание пользовательского логгера: %v", err)
-	}
+	customLog := initLog()
 	defer customLog.Close()
 
 	// конфигурация
@@ -32,22 +30,10 @@ func main() {
 		return
 	}
 
-	var myStorage storage.Storager
-
 	// хранилище
-	if cfg.DatabaseDSN() != "" {
-		err = migrations.MigrationsUP(cfg.DatabaseDSN())
-		if err != nil {
-			customLog.Error("проведение миграций", slog.String("ошибка", err.Error()))
-			return
-		}
-		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
-	} else {
-		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
-	}
+	myStorage, err := initStorage(cfg)
 	if err != nil {
-		customLog.Error("создание хранилища данных", slog.String("ошибка", err.Error()))
-		return
+		customLog.Error("инициализация хранилища", slog.String("ошибка", err.Error()))
 	}
 	defer myStorage.Close()
 
@@ -62,4 +48,25 @@ func main() {
 	if err = srv.Run(ctx, myStorage); err != nil {
 		customLog.Error("запуск сервера приложения", slog.String("ошибка", err.Error()))
 	}
+}
+
+// инициализация логера
+func initLog() *logger.Log {
+	customLog, err := logger.NewLogger(slog.LevelDebug)
+	if err != nil {
+		log.Fatalf("создание пользовательского логгера: %v", err)
+	}
+	return customLog
+}
+
+// инициализация хранилища
+func initStorage(cfg config.Config) (storage.Storager, error) {
+	if cfg.DatabaseDSN() != "" {
+		err := migrations.MigrationsUP(cfg.DatabaseDSN())
+		if err != nil {
+			return nil, fmt.Errorf("проведение миграций. %w", err)
+		}
+		return postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
+	}
+	return memory.NewStorage(cfg.FileStoragePath())
 }
