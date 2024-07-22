@@ -11,22 +11,25 @@ import (
 func BenchmarkGenerateSHA1(b *testing.B) {
 	b.Run("lenght 5", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			b.StopTimer()
 			str := randomString(5, 30)
-			b.ResetTimer()
+			b.StartTimer()
 			_, _ = generateSHA1(str, 5)
 		}
 	})
 	b.Run("lenght 10", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			b.StopTimer()
 			str := randomString(5, 30)
-			b.ResetTimer()
+			b.StartTimer()
 			_, _ = generateSHA1(str, 10)
 		}
 	})
 	b.Run("lenght 15", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			b.StopTimer()
 			str := randomString(5, 30)
-			b.ResetTimer()
+			b.StartTimer()
 			_, _ = generateSHA1(str, 10)
 		}
 	})
@@ -58,15 +61,17 @@ func generateLink(minLen, maxLen int) string {
 func BenchmarkGenerateLinksBatch(b *testing.B) {
 	b.Run("batch 100", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			b.StopTimer()
 			batch := generateBatch(100)
-			b.ResetTimer()
+			b.StartTimer()
 			_ = generateLinksBatch(batch)
 		}
 	})
 	b.Run("batch 1000", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			b.StopTimer()
 			batch := generateBatch(1000)
-			b.ResetTimer()
+			b.StartTimer()
 			_ = generateLinksBatch(batch)
 		}
 	})
