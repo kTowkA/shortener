@@ -1,16 +1,21 @@
+// модуль config отвечает за создание экземпляра конфигурации из переменных окружения, флагов запуска и значений по умолчанию
 package config
 
 import (
 	"flag"
+	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/caarlos0/env/v6"
 )
 
 const (
-	EnvServerAddress = "SERVER_ADDRESS"
-	EnvBaseURL       = "BASE_URL"
-	EnvDSN           = "DATABASE_DSN"
-	EnvSecretKey     = "SECRET_KEY"
+	defaultSecretKey = "super strong secret key"
+
+	defaultAddress         = "localhost:8080"
+	defaultBaseAddress     = "http://localhost:8080/"
+	defaultStorageFilePath = "/tmp/short-url-db.json"
 )
 
 var (
@@ -18,47 +23,103 @@ var (
 	flagB               string
 	flagStorageFilePath string
 	flagDatabaseDSN     string
-	logLevel            string
 )
 
+// Config конфигурация приложения
 type Config struct {
-	Address         string `env:"SERVER_ADDRESS"`
-	BaseAddress     string `env:"BASE_URL"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
-	LogLevel        string
-	SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
+	address         string
+	baseAddress     string
+	fileStoragePath string
+	databaseDSN     string
+	secretKey       string
 }
 
-func ParseConfig() (Config, error) {
-	flag.StringVar(&flagA, "a", "localhost:8080", "address:host")
-	flag.StringVar(&flagB, "b", "http://localhost:8080", "result address")
+// Address возвращает строку с адресом запускаемого сервера
+func (c *Config) Address() string {
+	return c.address
+}
+
+// BaseAddress возвращает строку с базовым адресом для сокращения ссылок
+func (c *Config) BaseAddress() string {
+	return c.baseAddress
+}
+
+// FileStoragePath возвращает строку с файлом-хранилищем
+func (c *Config) FileStoragePath() string {
+	return c.fileStoragePath
+}
+
+// DatabaseDSN возвращает строку для подключения к БД
+func (c *Config) DatabaseDSN() string {
+	return c.databaseDSN
+}
+
+// SecretKey возвращает строку содержащую секретный ключ
+func (c *Config) SecretKey() string {
+	return c.secretKey
+}
+
+// DefaultConfig конфигурация по умолчанию для быстрой настройки
+var DefaultConfig = Config{
+	address:         defaultAddress,
+	baseAddress:     defaultBaseAddress,
+	fileStoragePath: defaultStorageFilePath,
+	secretKey:       defaultSecretKey,
+}
+
+// ParseConfig запускает создание конфигурации читая значения переменных окружения и флагов командной строки
+func ParseConfig(logger *slog.Logger) (Config, error) {
+	flag.StringVar(&flagA, "a", defaultAddress, "address:host")
+	flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")
 	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
-	flag.StringVar(&flagStorageFilePath, "f", "/tmp/short-url-db.json", "file on disk with db")
-	flag.StringVar(&logLevel, "l", "info", "level (panic,fatal,error,warn,info,debug,trace)")
+	flag.StringVar(&flagStorageFilePath, "f", defaultStorageFilePath, "file on disk with db")
 
 	flag.Parse()
 
-	cfg := Config{
-		LogLevel: logLevel,
+	type PublicConfig struct {
+		Address         string `env:"SERVER_ADDRESS"`
+		BaseAddress     string `env:"BASE_URL"`
+		FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
+		DatabaseDSN     string `env:"DATABASE_DSN"`
+		SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
 	}
+
+	cfg := PublicConfig{}
 	err := env.Parse(&cfg)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("сопостовление переменных окружения с объектом конфигурации. %w", err)
 	}
 
-	if cfg.Address == "" {
-		cfg.Address = flagA
-	}
+	cfg.Address = setConfigValue(cfg.Address, flagA, defaultAddress)
 
-	if cfg.BaseAddress == "" {
-		cfg.BaseAddress = flagB
+	cfg.BaseAddress = setConfigValue(cfg.BaseAddress, flagB, defaultBaseAddress)
+	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
+
+	cfg.DatabaseDSN = setConfigValue(cfg.DatabaseDSN, flagDatabaseDSN, "")
+	cfg.FileStoragePath = setConfigValue(cfg.FileStoragePath, flagStorageFilePath, defaultStorageFilePath)
+	cfg.SecretKey = setConfigValue(cfg.SecretKey, "", defaultSecretKey)
+
+	logger.Debug("конфигурация",
+		slog.String("адрес", cfg.Address),
+		slog.String("базовый адрес", cfg.BaseAddress),
+		slog.String("путь к файлу-хранилищу", cfg.FileStoragePath),
+		slog.String("строка соединения с БД", cfg.DatabaseDSN),
+	)
+	return Config{
+		address:         cfg.Address,
+		baseAddress:     cfg.BaseAddress,
+		fileStoragePath: cfg.FileStoragePath,
+		databaseDSN:     cfg.DatabaseDSN,
+		secretKey:       cfg.SecretKey,
+	}, nil
+}
+
+func setConfigValue(envValue, flagValue, defaultValue string) string {
+	if envValue == "" {
+		if flagValue != "" {
+			return flagValue
+		}
+		return defaultValue
 	}
-	if cfg.DatabaseDSN == "" {
-		cfg.DatabaseDSN = flagDatabaseDSN
-	}
-	if cfg.FileStoragePath == "" {
-		cfg.FileStoragePath = flagStorageFilePath
-	}
-	return cfg, nil
+	return envValue
 }

@@ -8,12 +8,14 @@ import (
 	"github.com/kTowkA/shortener/internal/model"
 )
 
+// Возможные стандартные ошибки хранилища
 var (
 	ErrURLNotFound = errors.New("URL не найден")
 	ErrURLConflict = errors.New("оригинальный URL уже был добавлен")
 	ErrURLIsExist  = errors.New("такой ключ занят")
 )
 
+// Storager интерфейс для последующей реализации хранилища сокращенных ссылок
 type Storager interface {
 	// SaveURL сохраняет пару real-short url
 	SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error)

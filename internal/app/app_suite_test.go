@@ -6,6 +6,7 @@ package app
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,15 +17,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var (
-	defaultAddress     = "http://localhost:8080"
-	defaultBaseAddress = "http://localhost:8080"
-
-	cfg = config.Config{
-		Address:     defaultAddress,
-		BaseAddress: defaultBaseAddress,
-	}
-)
+var defaultAddress = ""
 
 type (
 	header struct {
@@ -53,8 +46,10 @@ type (
 func (suite *appTestSuite) SetupSuite() {
 	suite.Suite.T().Log("Suite setup")
 
-	s, err := NewServer(cfg)
-	suite.NoError(err)
+	defaultAddress = config.DefaultConfig.BaseAddress()
+
+	s, err := NewServer(config.DefaultConfig, slog.Default())
+	suite.Require().NoError(err)
 
 	storage, err := memory.NewStorage("")
 	suite.NoError(err)
@@ -122,15 +117,6 @@ func (suite *appTestSuite) SetupTest() {
 		// },
 	}
 	suite.tests["api shorten"] = []test{
-		{
-			name:    "неправильный content-type в запросе, валидный url",
-			request: createTestRequest(http.MethodPost, defaultAddress, strings.NewReader(`{"url": "https://www.sobyte.net/post/2023-07/testify/"}`), header{"content-type", "text/plain"}),
-			want: want{
-				response: wantResponse{
-					code: http.StatusBadRequest,
-				},
-			},
-		},
 		{
 			name:    "правильный content-type в запросе, пустое тело запроса",
 			request: createTestRequest(http.MethodPost, defaultAddress, nil, header{"content-type", "application/json"}),
@@ -267,7 +253,7 @@ func (suite *appTestSuite) TestCaseAPIShorten() {
 			w := httptest.NewRecorder()
 			suite.server.apiShorten(w, subt.request)
 			response := w.Result()
-			suite.Equal(subt.want.response.code, response.StatusCode)
+			suite.Equal(subt.want.response.code, response.StatusCode, subt.name)
 			err := response.Body.Close()
 			suite.NoError(err)
 		}

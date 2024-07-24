@@ -1,20 +1,22 @@
+// модуль app отвечает за настройку и запуск сервера сокращателя ссылок.
+// он поднимает сервер необходимые роуты, объявленные в задании
 package app
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/kTowkA/shortener/internal/config"
-	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
-	"github.com/kTowkA/shortener/internal/storage/memory"
-	"github.com/kTowkA/shortener/internal/storage/postgres"
-	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -26,74 +28,106 @@ const (
 	defaultLenght = 10
 )
 
+// Server структура сервер служит для создания экземпляра запускаемого сервера.
+// содержит только неэкспортируемые поля, включающие в себя хранилище данных, логгер и собственно сам веб-сервер
 type Server struct {
 	db            storage.Storager
 	Config        config.Config
 	deleteMessage chan model.DeleteURLMessage
+	logger        *slog.Logger
+	server        *http.Server
 }
 
-func NewServer(cfg config.Config) (*Server, error) {
-	err := logger.New(logger.LevelFromString(cfg.LogLevel))
-	if err != nil {
-		return nil, fmt.Errorf("создание сервера. %w", err)
-	}
-	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
-	// не должно так быть, хранилище инициализируется при запуске ниже, но без этого не проходят тесты
-	storage, err := memory.NewStorage("")
-	if err != nil {
-		return nil, fmt.Errorf("создание сервера. %w", err)
-	}
+// NewServer создает новый экземпляр сервера с конфигурацией cfg и логером logger.
+// Возвращает сервер и ошибку
+func NewServer(cfg config.Config, logger *slog.Logger) (*Server, error) {
 	return &Server{
-		Config:        cfg,
-		db:            storage,
+		Config: cfg,
+		logger: logger,
+		server: &http.Server{
+			Addr: cfg.Address(),
+		},
 		deleteMessage: make(chan model.DeleteURLMessage, 100),
 	}, nil
 }
 
-func (s *Server) ListenAndServe() error {
-	var (
-		myStorage storage.Storager
-		err       error
-	)
-	if s.Config.DatabaseDSN != "" {
-		myStorage, err = postgres.NewStorage(context.Background(), s.Config.DatabaseDSN)
-	} else {
-		myStorage, err = memory.NewStorage(s.Config.FileStoragePath)
-	}
-	if err != nil {
-		return fmt.Errorf("запуск сервера. %w", err)
-	}
-	defer myStorage.Close()
-	defer close(s.deleteMessage)
+// Run запуск сервера с указанием контекста для отмены ctx и хранилища storage
+func (s *Server) Run(ctx context.Context, storage storage.Storager) error {
+	s.db = storage
+
+	s.setRoute()
+
+	// создание группы
+	gr, grCtx := errgroup.WithContext(ctx)
+
+	// запуск приложения
+	gr.Go(func() error {
+
+		defer s.logger.Info("приложение остановлено")
+
+		s.logger.Info("запуск приложения", slog.String("адрес", s.Config.Address()))
+
+		if err := s.server.ListenAndServe(); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				s.logger.Error("запуск сервера", slog.String("ошибка", err.Error()))
+			}
+		}
+
+		return nil
+	})
+
+	// ожидание завершения работы приложения
+	gr.Go(func() error {
+		// закроем канал с сообщениями на удаление
+		defer close(s.deleteMessage)
+
+		// ожидаем отмены
+		<-grCtx.Done()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// завершаем работу сервера
+		if err := s.server.Shutdown(ctx); err != nil {
+			s.logger.Error("завершение работы приложения", slog.String("ошибка", err.Error()))
+			return err
+		}
+
+		return nil
+	})
 
 	go s.flushDeleteMessages()
-	s.db = myStorage
 
+	return gr.Wait()
+}
+
+func (s *Server) setRoute() {
 	mux := chi.NewRouter()
 
-	mux.Use(withLog, withGZIP, s.withToken)
+	mux.Use(s.withLog, withGZIP, s.withToken)
 
 	mux.Route("/", func(r chi.Router) {
 		r.Post("/", s.encodeURL)
 		r.Get("/{short}", s.decodeURL)
 		r.Route("/api", func(r chi.Router) {
-			r.Route("/shorten", func(r chi.Router) {
-				r.Post("/", s.apiShorten)
-				r.Post("/batch", s.batch)
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.AllowContentType("application/json", "application/x-gzip"))
+				r.Route("/shorten", func(r chi.Router) {
+					r.Post("/", s.apiShorten)
+					r.Post("/batch", s.batch)
+				})
+				r.Delete("/user/urls", s.deleteUserURLs)
 			})
-			r.Route("/user", func(r chi.Router) {
-				r.Get("/urls", s.getUserURLs)
-				r.Delete("/urls", s.deleteUserURLs)
-			})
+			r.Get("/user/urls", s.getUserURLs)
 		})
 		r.Get("/ping", s.ping)
 	})
-
-	logger.Log.Info("запуск сервера", zap.String("адрес", s.Config.Address))
-	return http.ListenAndServe(s.Config.Address, mux)
+	mux.Mount("/debug", middleware.Profiler())
+	s.server.Handler = mux
 }
+
 func (s *Server) flushDeleteMessages() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 
 	var messages []model.DeleteURLMessage
 
@@ -109,7 +143,7 @@ func (s *Server) flushDeleteMessages() {
 			err := s.db.DeleteURLs(ctx, messages)
 			cancel()
 			if err != nil {
-				logger.Log.Error("удаление сообщений", zap.Error(err))
+				s.logger.Error("удаление сообщений", slog.String("ошибка", err.Error()))
 			}
 			messages = nil
 		}

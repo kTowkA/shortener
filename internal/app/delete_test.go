@@ -8,6 +8,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
@@ -17,12 +18,10 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/kTowkA/shortener/internal/config"
-	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
 	"github.com/kTowkA/shortener/internal/storage/postgres"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
 )
 
 type (
@@ -36,22 +35,26 @@ var tmpURL = "https://practicum.yandex.ru/learn/go-advanced/courses/"
 
 func (suite *appDeleteTestSuite) SetupSuite() {
 	suite.Suite.T().Log("Suite setup")
-	cfg, err := config.ParseConfig()
-	suite.Require().NoError(err)
-	var myStorage storage.Storager
-	if cfg.DatabaseDSN != "" {
-		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN)
+	cfg := config.DefaultConfig
+	var (
+		myStorage storage.Storager
+		err       error
+	)
+	if cfg.DatabaseDSN() != "" {
+		suite.Suite.T().Log("database")
+		myStorage, err = postgres.NewStorage(context.Background(), cfg.DatabaseDSN())
 	} else {
-		myStorage, err = memory.NewStorage(cfg.DatabaseDSN)
+		suite.Suite.T().Log("file")
+		myStorage, err = memory.NewStorage(cfg.FileStoragePath())
 	}
 	suite.Require().NoError(err)
 
-	s, err := NewServer(cfg)
+	s, err := NewServer(cfg, slog.Default())
 	suite.Require().NoError(err)
-	s.db = myStorage
+	// s.db = myStorage
 
 	suite.server = s
-	go s.ListenAndServe()
+	go s.Run(context.Background(), myStorage)
 	time.Sleep(3 * time.Second)
 }
 
@@ -73,8 +76,7 @@ func (suite *appDeleteTestSuite) TestDelete() {
 			suite.Require().NoError(err)
 			client := resty.New().SetCookieJar(jar1)
 			for _, l := range links {
-				logger.Log.Info("", zap.String("link", l))
-				resp, err := client.R().SetBody(l).Post("http://" + suite.server.Config.Address)
+				resp, err := client.R().SetBody(l).Post("http://" + suite.server.Config.Address())
 				suite.Assert().Equal(http.StatusCreated, resp.StatusCode())
 				suite.Require().NoError(err)
 				sl := strings.Split(string(resp.Body()), "/")
@@ -83,7 +85,7 @@ func (suite *appDeleteTestSuite) TestDelete() {
 			}
 			body, err := json.Marshal(shorts)
 			suite.Require().NoError(err)
-			resp, err := client.R().SetHeader("Content-Type", "application/json").SetBody(body).Delete("http://" + suite.server.Config.Address + "/api/user/urls")
+			resp, err := client.R().SetHeader("Content-Type", "application/json").SetBody(body).Delete("http://" + suite.server.Config.Address() + "/api/user/urls")
 			suite.Require().NoError(err)
 			suite.Assert().Equal(http.StatusAccepted, resp.StatusCode())
 

@@ -11,18 +11,20 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
-	"go.uber.org/zap"
 )
 
+// Storage memory хранилище для реализации интерфейса Storager
 type Storage struct {
 	pairs map[string]model.StorageJSONWithUserID
 	sync.Mutex
 	storageFile string
 }
 
+// NewStorage создание экземляра Storage, реализующего интерфейс Storager в памяти или файле.
+// если передается storageFile в виде пустой строки, то хранилище реализуется в файле.
+// возвращает экземпляр Storage и ошибку
 func NewStorage(storageFile string) (*Storage, error) {
 	var (
 		links map[string]model.StorageJSONWithUserID
@@ -43,10 +45,13 @@ func NewStorage(storageFile string) (*Storage, error) {
 		storageFile: storageFile,
 	}, nil
 }
+
+// Close memory реализация интерфейса Storager
 func (s *Storage) Close() error {
 	return nil
 }
 
+// SaveURL memory реализация интерфейса Storager
 func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
@@ -75,6 +80,7 @@ func (s *Storage) SaveURL(ctx context.Context, userID uuid.UUID, real, short str
 	return short, nil
 }
 
+// RealURL memory реализация интерфейса Storager
 func (s *Storage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
@@ -87,6 +93,7 @@ func (s *Storage) RealURL(ctx context.Context, short string) (model.StorageJSON,
 	return model.StorageJSON{}, storage.ErrURLNotFound
 }
 
+// Ping memory реализация интерфейса Storager
 func (s *Storage) Ping(ctx context.Context) error {
 	return nil
 }
@@ -110,7 +117,6 @@ func restoreFromFile(filename string) (map[string]model.StorageJSONWithUserID, e
 		element := model.StorageJSONWithUserID{}
 		err = json.Unmarshal(raw, &element)
 		if err != nil {
-			logger.Log.Error("раскодирование элемента", zap.Error(err))
 			continue
 		}
 		elements[element.ShortURL] = element
@@ -118,6 +124,7 @@ func restoreFromFile(filename string) (map[string]model.StorageJSONWithUserID, e
 	return elements, nil
 }
 
+// Batch memory реализация интерфейса Storager
 func (s *Storage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
@@ -163,6 +170,7 @@ func (s *Storage) Batch(ctx context.Context, userID uuid.UUID, values model.Batc
 	return result, nil
 }
 
+// UserURLs memory реализация интерфейса Storager
 func (s *Storage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
@@ -178,6 +186,8 @@ func (s *Storage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stora
 	}
 	return results, nil
 }
+
+// DeleteURLs memory реализация интерфейса Storager
 func (s *Storage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
 	s.Mutex.Lock()
 	change := false

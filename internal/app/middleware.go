@@ -5,20 +5,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"github.com/kTowkA/shortener/internal/logger"
-	"go.uber.org/zap"
 )
 
 const (
-	authCookie      = "jwt"
-	TokenExp12Hours = 12 * time.Hour
+	authCookie = "jwt"
 )
+
+// TokenExp12Hours константа для установления время жизни токена в 12 часов
+const TokenExp12Hours = 12 * time.Hour
 
 type contextKey string
 
@@ -39,18 +40,20 @@ type loggingResponseWriter struct {
 	responseData *responseData
 }
 
+// Write реализация кастомного http.ResponseWriter
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
 	return size, err
 }
 
+// WriteHeader реализация кастомного http.ResponseWriter
 func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode
 }
 
-func withLog(h http.Handler) http.Handler {
+func (s *Server) withLog(h http.Handler) http.Handler {
 
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 
@@ -64,13 +67,13 @@ func withLog(h http.Handler) http.Handler {
 		h.ServeHTTP(&lw, r)
 
 		duration := time.Since(start)
-		logger.Log.Info(
+		s.logger.Info(
 			"входящий запрос",
-			zap.String("uri", r.RequestURI),
-			zap.String("http метод", r.Method),
-			zap.Duration("длительность запроса", duration),
-			zap.Int("статус", lw.responseData.status),
-			zap.Int("размер ответа", lw.responseData.size),
+			slog.String("uri", r.RequestURI),
+			slog.String("http метод", r.Method),
+			slog.Duration("длительность запроса", duration),
+			slog.Int("статус", lw.responseData.status),
+			slog.Int("размер ответа", lw.responseData.size),
 		)
 	}
 
@@ -88,14 +91,17 @@ type (
 	}
 )
 
+// Write реализация кастомного http.ResponseWriter
 func (gzw *gzipWriter) Write(p []byte) (int, error) {
 	return gzw.gzw.Write(p)
 }
 
+// Read реализация кастомного http.ResponseWriter
 func (gzr *gzipReader) Read(p []byte) (n int, err error) {
 	return gzr.gzr.Read(p)
 }
 
+// Close реализация кастомного http.ResponseWriter
 func (gzr *gzipReader) Close() error {
 	if err := gzr.orig.Close(); err != nil {
 		return err
@@ -155,7 +161,7 @@ func gzipValidContenType(header http.Header) bool {
 
 func (s *Server) withToken(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, err := getUserIDFromCookie(r, s.Config.SecretKey)
+		userID, err := getUserIDFromCookie(r, s.Config.SecretKey())
 		if err == nil {
 			// все хорошо, токен валиден и есть userID - продолжаем
 			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey("userID"), userID)))
@@ -164,9 +170,9 @@ func (s *Server) withToken(h http.Handler) http.Handler {
 		// создаем новый токен
 		// в настоящий момент нет системы авторизации/регистрации - мы генерируем новый userID в таких случаях
 		userID = uuid.New()
-		newTokenString, err := buildJWTString(userID, s.Config.SecretKey)
+		newTokenString, err := buildJWTString(userID, s.Config.SecretKey())
 		if err != nil {
-			logger.Log.Error("создание токена", zap.Error(err))
+			s.logger.Error("создание токена", slog.String("ошибка", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -224,12 +230,10 @@ func getUserIDFromToken(tokenString, secret string) (uuid.UUID, error) {
 func getUserIDFromCookie(r *http.Request, secret string) (uuid.UUID, error) {
 	token, err := r.Cookie(authCookie)
 	if err != nil {
-		logger.Log.Error("не смогли получить cookie", zap.String("", err.Error()))
 		return uuid.UUID{}, fmt.Errorf("не смогли получить cookie. %w", err)
 	}
 	userID, err := getUserIDFromToken(token.Value, secret)
 	if err != nil {
-		logger.Log.Error("получение userID", zap.Error(err))
 		return uuid.UUID{}, fmt.Errorf("не смогли получить userID из токена. %w", err)
 	}
 	if err := uuid.Validate(userID.String()); err != nil {
