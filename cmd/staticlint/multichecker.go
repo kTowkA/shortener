@@ -5,6 +5,7 @@ import (
 
 	// "github.com/securego/gosec"
 	"github.com/Antonboom/testifylint/analyzer"
+	"github.com/kTowkA/shortener/internal/linter"
 	"github.com/kkHAIKE/contextcheck"
 	"github.com/timakin/bodyclose/passes/bodyclose"
 	"golang.org/x/tools/go/analysis"
@@ -23,6 +24,7 @@ import (
 // ++ всех анализаторов класса SA пакета staticcheck.io;
 // ++ не менее одного анализатора остальных классов пакета staticcheck.io;
 // ++ двух или более любых публичных анализаторов на ваш выбор.
+// ++ Напишите и добавьте в multichecker собственный анализатор, запрещающий использовать прямой вызов os.Exit в функции main пакета main. При необходимости перепишите код своего проекта так, чтобы он удовлетворял данному анализатору.
 
 func main() {
 	// берем с запасом
@@ -78,6 +80,9 @@ func main() {
 	mychecks = append(mychecks, analyzer.New())
 	mychecks = append(mychecks, bodyclose.Analyzer)
 	mychecks = append(mychecks, contextcheck.NewAnalyzer(contextcheck.Configuration{}))
+
+	// ну и мою проверку добавляем
+	mychecks = append(mychecks, linter.New(nil))
 
 	multichecker.Main(
 		mychecks...,
