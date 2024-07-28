@@ -52,7 +52,7 @@ func (suite *appTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	storage, err := memory.NewStorage("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	s.db = storage
 
 	suite.tests = make(map[string][]test)
@@ -211,7 +211,7 @@ func (suite *appTestSuite) SetupSubTest() {
 	body, err := io.ReadAll(response.Body)
 	suite.Require().NoError(err)
 	err = response.Body.Close()
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	generatedLink := string(body)
 	// здесь может быть странный кусок. Вначале мы не знаем какая ссылка будет (при настройке теста)
 	// вначале мы сохраняем ссылку в бд

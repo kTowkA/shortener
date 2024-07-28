@@ -77,7 +77,7 @@ func (suite *appDeleteTestSuite) TestDelete() {
 			client := resty.New().SetCookieJar(jar1)
 			for _, l := range links {
 				resp, err := client.R().SetBody(l).Post("http://" + suite.server.Config.Address())
-				suite.Assert().Equal(http.StatusCreated, resp.StatusCode())
+				suite.Equal(http.StatusCreated, resp.StatusCode())
 				suite.Require().NoError(err)
 				sl := strings.Split(string(resp.Body()), "/")
 				pairs[string(resp.Body())] = l
@@ -87,7 +87,7 @@ func (suite *appDeleteTestSuite) TestDelete() {
 			suite.Require().NoError(err)
 			resp, err := client.R().SetHeader("Content-Type", "application/json").SetBody(body).Delete("http://" + suite.server.Config.Address() + "/api/user/urls")
 			suite.Require().NoError(err)
-			suite.Assert().Equal(http.StatusAccepted, resp.StatusCode())
+			suite.Equal(http.StatusAccepted, resp.StatusCode())
 
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
@@ -98,7 +98,7 @@ func (suite *appDeleteTestSuite) TestDelete() {
 				for short := range pairs {
 					select {
 					case <-ctx.Done():
-						suite.Assert().Equal(0, len(pairs))
+						suite.Empty(pairs)
 						return
 					default:
 						resp, _ := client.R().Get(short)

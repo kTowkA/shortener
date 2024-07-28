@@ -51,27 +51,27 @@ func (suite *serverSuite) TestMainRoute() {
 
 	req := resty.New().SetHeader("content-type", "text/plain").SetBaseURL(ts.URL).R()
 	resp, err := req.SetBody(nil).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusBadRequest, resp.StatusCode())
 
 	resp, err = req.SetBody(strings.NewReader("")).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusBadRequest, resp.StatusCode())
 
 	resp, err = req.SetBody(strings.NewReader("sadasdasdasdf")).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusBadRequest, resp.StatusCode())
 
 	link := generateLink(5, 30)
 	suite.mockStorage.On("SaveURL", mock.Anything, mock.Anything, link, mock.AnythingOfType("string")).Return("test", nil)
 	resp, err = req.SetBody(strings.NewReader(link)).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusCreated, resp.StatusCode())
 
 	link = generateLink(4, 30)
 	suite.mockStorage.On("SaveURL", mock.Anything, mock.Anything, link, mock.AnythingOfType("string")).Return("test", storage.ErrURLConflict)
 	resp, err = req.SetBody(strings.NewReader(link)).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusConflict, resp.StatusCode())
 }
 
@@ -84,27 +84,27 @@ func (suite *serverSuite) TestDecodeURL() {
 	req := resty.New().SetBaseURL(ts.URL).R()
 
 	resp, err := req.SetBody(nil).Get("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusBadRequest, resp.StatusCode())
 
 	suite.mockStorage.On("RealURL", mock.Anything, "ErrURLNotFound").Return(model.StorageJSON{}, storage.ErrURLNotFound)
 	resp, err = req.SetBody(nil).Get("/ErrURLNotFound")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusNotFound, resp.StatusCode())
 
 	suite.mockStorage.On("RealURL", mock.Anything, "StatusInternalServerError").Return(model.StorageJSON{}, errors.New("StatusInternalServerError"))
 	resp, err = req.SetBody(nil).Get("/StatusInternalServerError")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusInternalServerError, resp.StatusCode())
 
 	suite.mockStorage.On("RealURL", mock.Anything, "IsDeleted").Return(model.StorageJSON{IsDeleted: true}, nil)
 	resp, err = req.SetBody(nil).Get("/IsDeleted")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusGone, resp.StatusCode())
 
 	suite.mockStorage.On("RealURL", mock.Anything, "StatusTemporaryRedirect").Return(model.StorageJSON{}, nil)
 	resp, err = req.SetBody(nil).Get("/StatusTemporaryRedirect")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusTemporaryRedirect, resp.StatusCode())
 }
 
@@ -147,12 +147,12 @@ func (suite *serverSuite) TestPing() {
 
 	suite.mockStorage.On("Ping", mock.Anything).Return(nil).Once()
 	resp, err := req.Get("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusOK, resp.StatusCode())
 
 	suite.mockStorage.On("Ping", mock.Anything).Return(errors.New(""))
 	resp, err = req.Get("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusInternalServerError, resp.StatusCode())
 }
 
@@ -165,7 +165,7 @@ func (suite *serverSuite) TestBatch() {
 	req := resty.New().SetBaseURL(ts.URL).R()
 
 	resp, err := req.SetBody(`[{"1":"2"},{"3":"4"}]`).Post("")
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.EqualValues(http.StatusBadRequest, resp.StatusCode())
 
 }

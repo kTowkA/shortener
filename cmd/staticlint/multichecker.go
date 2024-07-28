@@ -6,7 +6,6 @@ import (
 	// "github.com/securego/gosec"
 	"github.com/Antonboom/testifylint/analyzer"
 	"github.com/kTowkA/shortener/internal/linter"
-	"github.com/kkHAIKE/contextcheck"
 	"github.com/timakin/bodyclose/passes/bodyclose"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/multichecker"
@@ -79,7 +78,7 @@ func main() {
 	// custom
 	mychecks = append(mychecks, analyzer.New())
 	mychecks = append(mychecks, bodyclose.Analyzer)
-	mychecks = append(mychecks, contextcheck.NewAnalyzer(contextcheck.Configuration{}))
+	// mychecks = append(mychecks, contextcheck.NewAnalyzer(contextcheck.Configuration{}))
 
 	// ну и мою проверку добавляем
 	mychecks = append(mychecks, linter.New(nil))
