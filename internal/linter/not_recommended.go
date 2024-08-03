@@ -43,10 +43,12 @@ var defaultsNotRecomendedFuncs = []NotRecommended{
 	},
 }
 
+// AnalyzerNotRecommended анализатор нерекомендуемых к использованию функций
 type AnalyzerNotRecommended struct {
 	notRecomendedFuncs []NotRecommended
 }
 
+// NewAnalyzerNotRecommended создает новый анализатор типа AnalyzerNotRecommended и устанавливает ему правила cfg, при их отсутствии берет значения по умолчанию
 func NewAnalyzerNotRecommended(cfg ...NotRecommended) *AnalyzerNotRecommended {
 	anr := new(AnalyzerNotRecommended)
 	if len(cfg) == 0 {
@@ -57,6 +59,8 @@ func NewAnalyzerNotRecommended(cfg ...NotRecommended) *AnalyzerNotRecommended {
 	}
 	return anr
 }
+
+// SetConfig устанавливает нерекомендуемые к использованию функции, если ничего не передано произойдет паника
 func (anr *AnalyzerNotRecommended) SetConfig(cfg ...NotRecommended) *AnalyzerNotRecommended {
 	if len(cfg) == 0 {
 		panic("конфигурация не может быть пустой!")
@@ -64,12 +68,18 @@ func (anr *AnalyzerNotRecommended) SetConfig(cfg ...NotRecommended) *AnalyzerNot
 	anr.notRecomendedFuncs = cfg
 	return anr
 }
+
+// Name возвращает имя анализатора AnalyzerNotRecommended
 func (anr *AnalyzerNotRecommended) Name() string {
 	return "Notrecomendedfuncs"
 }
+
+// Doc возвращает описание анализатора AnalyzerNotRecommended
 func (anr *AnalyzerNotRecommended) Doc() string {
 	return "Checking for undesirability of using functions"
 }
+
+// Run реализация функции запуска анализатора
 func (anr *AnalyzerNotRecommended) Run(pass *analysis.Pass) (interface{}, error) {
 	// проверяем для каждой функции в notRecomendedFuncs
 	for _, nrf := range anr.notRecomendedFuncs {
@@ -116,6 +126,8 @@ func (anr *AnalyzerNotRecommended) Run(pass *analysis.Pass) (interface{}, error)
 	}
 	return nil, nil
 }
+
+// Analyzer создание экземпляра *analysis.Analyzer
 func (anr *AnalyzerNotRecommended) Analyzer() *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: anr.Name(),
