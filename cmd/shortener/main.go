@@ -18,7 +18,21 @@ import (
 	"github.com/kTowkA/shortener/internal/storage/postgres/migrations"
 )
 
+var (
+	buildVersion string = "N/A"
+	buildDate    string = "N/A"
+	buildCommit  string = "N/A"
+)
+
 func main() {
+	// При указании флага линковщика -ldflags и указании флага -X можно собрать приложение с определенными значениями buildVersion,buildDate,buildCommit
+	// -X main.buildVersion=версия
+	fmt.Println(buildVersion)
+	// -X 'main.buildDate=$(date +'%Y/%m/%d %H:%M:%S')' для получения даты сборки
+	fmt.Println(buildDate)
+	// -X 'main.buildCommit=$(git show --oneline -s)' для получения коммита
+	fmt.Println(buildCommit)
+
 	// логгер
 	customLog := initLog()
 	defer customLog.Close()

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -24,7 +23,6 @@ import (
 
 // encodeURL обработчик для кодирования входящего урла
 func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
-
 	// проверяем, что контент тайп нужный
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "text/plain") && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-gzip") {
 		http.Error(w, fmt.Sprintf("разрешенные типы контента: %v", []string{"text/plain", "application/x-gzip"}), http.StatusBadRequest)
@@ -53,6 +51,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "пустой запрос", http.StatusBadRequest)
 		return
 	}
+
 	// проверяем, что это ссылка
 	_, err := url.ParseRequestURI(link)
 	if err != nil {
@@ -93,7 +92,6 @@ func (s *Server) decodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	short = strings.Trim(short, "/")
-
 	real, err := s.db.RealURL(r.Context(), short)
 	// ничего не нашли
 	if errors.Is(err, storage.ErrURLNotFound) {
@@ -209,7 +207,6 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("Unmarshal")
 		return
 	}
-	log.Println(req)
 	req = validateBatch(req)
 	// проверяем, что есть запросы
 	if len(req) == 0 {
