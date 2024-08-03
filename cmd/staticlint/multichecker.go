@@ -13,6 +13,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/printf"
 	"golang.org/x/tools/go/analysis/passes/slog"
 	"golang.org/x/tools/go/analysis/passes/unreachable"
+	"honnef.co/go/tools/analysis/lint"
 	"honnef.co/go/tools/quickfix"
 	"honnef.co/go/tools/simple"
 	"honnef.co/go/tools/staticcheck"
@@ -27,63 +28,47 @@ import (
 
 func main() {
 	// берем с запасом
-	mychecks := make([]*analysis.Analyzer, 0, 150)
+	analyzers := make([]*analysis.Analyzer, 0, 150)
+	analyzers = addAnalyzersStaticcheck(analyzers, staticcheck.Analyzers, []string{"SA"})
+	analyzers = addAnalyzersStaticcheck(analyzers, stylecheck.Analyzers, []string{"ST1022", "ST1015"})
+	analyzers = addAnalyzersStaticcheck(analyzers, simple.Analyzers, []string{"S1001", "S1040"})
+	analyzers = addAnalyzersStaticcheck(analyzers, quickfix.Analyzers, []string{"QF1009", "QF1004"})
 
-	// SA
-	for _, v := range staticcheck.Analyzers {
-		if strings.HasPrefix(v.Analyzer.Name, "SA") {
-			mychecks = append(mychecks, v.Analyzer)
-		}
-	}
-	// QF
+	analyzers = addPasses(analyzers)
+	analyzers = addCustomAnalyzers(analyzers)
 
-	qf := []string{"QF1009", "QF1004"}
-	for _, v := range quickfix.Analyzers {
-		for _, needA := range qf {
-			if needA == v.Analyzer.Name {
-				mychecks = append(mychecks, v.Analyzer)
-				break
-			}
-		}
-	}
-
-	// S1
-	s1 := []string{"S1001", "S1040"}
-	for _, v := range simple.Analyzers {
-		for _, needA := range s1 {
-			if needA == v.Analyzer.Name {
-				mychecks = append(mychecks, v.Analyzer)
-				break
-			}
-		}
-	}
-
-	// ST
-	st := []string{"ST1022", "ST1015"}
-	for _, v := range stylecheck.Analyzers {
-		for _, needA := range st {
-			if needA == v.Analyzer.Name {
-				mychecks = append(mychecks, v.Analyzer)
-				break
-			}
-		}
-	}
-
-	// golang.org/x/tools/go/analysis/passes
-	mychecks = append(mychecks, printf.Analyzer)
-	mychecks = append(mychecks, slog.Analyzer)
-	mychecks = append(mychecks, unreachable.Analyzer)
-	mychecks = append(mychecks, loopclosure.Analyzer)
-
-	// custom
-	mychecks = append(mychecks, analyzer.New())
-	mychecks = append(mychecks, bodyclose.Analyzer)
-	// mychecks = append(mychecks, contextcheck.NewAnalyzer(contextcheck.Configuration{}))
-
-	// ну и мою проверку добавляем
-	mychecks = append(mychecks, linter.New(nil))
+	// ну и мою проверку добавляем (custom linter 001)
+	analyzers = append(analyzers, linter.Analyzers["CL001"])
 
 	multichecker.Main(
-		mychecks...,
+		analyzers...,
 	)
+}
+
+func addAnalyzersStaticcheck(check []*analysis.Analyzer, analyzers []*lint.Analyzer, prefixs []string) []*analysis.Analyzer {
+	for _, v := range analyzers {
+		for _, prefix := range prefixs {
+			if strings.HasPrefix(v.Analyzer.Name, prefix) {
+				check = append(check, v.Analyzer)
+				break
+			}
+		}
+	}
+	return check
+}
+
+// golang.org/x/tools/go/analysis/passes
+func addPasses(check []*analysis.Analyzer) []*analysis.Analyzer {
+	check = append(check, printf.Analyzer)
+	check = append(check, slog.Analyzer)
+	check = append(check, unreachable.Analyzer)
+	check = append(check, loopclosure.Analyzer)
+	return check
+}
+
+// custom
+func addCustomAnalyzers(check []*analysis.Analyzer) []*analysis.Analyzer {
+	check = append(check, analyzer.New())
+	check = append(check, bodyclose.Analyzer)
+	return check
 }
