@@ -136,6 +136,20 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 	cfg.SecretKey = setConfigValue(cfg.SecretKey, "", defaultSecretKey)
 	cfg.DomainName = setConfigValue(cfg.DomainName, flagDomainName, "")
 
+	if cfg.EnableHTTPS {
+		if strings.HasPrefix(cfg.Address, "http://") {
+			cfg.Address = "https://" + strings.TrimPrefix(cfg.Address, "http://")
+		}
+		adrSl := strings.Split(cfg.Address, ":")
+		if len(adrSl) == 1 {
+			cfg.Address += ":443"
+		} else {
+			adrSl[len(adrSl)-1] = "443"
+			cfg.Address = strings.Join(adrSl, ":")
+		}
+		logger.Info("установлен HTTPS. Установили порт на 443")
+	}
+
 	logger.Debug("конфигурация",
 		slog.String("адрес", cfg.Address),
 		slog.String("базовый адрес", cfg.BaseAddress),

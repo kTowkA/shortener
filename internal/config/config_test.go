@@ -74,3 +74,11 @@ func TestConfigEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, cfg.HTTPS())
 }
+
+func TestHTTPS(t *testing.T) {
+	os.Setenv("ENABLE_HTTPS", "")
+	os.Setenv("SERVER_ADDRESS", "http://localhost:80")
+	cfg, err := ParseConfig(slog.Default())
+	require.NoError(t, err)
+	assert.EqualValues(t, "https://localhost:443", cfg.Address())
+}
