@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/caarlos0/env/v6"
 )
@@ -91,18 +90,18 @@ var DefaultConfig = Config{
 	},
 }
 
+func init() {
+	flag.StringVar(&flagA, "a", defaultAddress, "address:host")
+	flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")
+	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
+	flag.StringVar(&flagStorageFilePath, "f", defaultStorageFilePath, "file on disk with db")
+	flag.StringVar(&flagDomainName, "dn", "", "domain name")
+	flag.BoolVar(&flagEnableHTTPS, "s", false, "enable https")
+}
+
 // ParseConfig запускает создание конфигурации читая значения переменных окружения и флагов командной строки
 func ParseConfig(logger *slog.Logger) (Config, error) {
-	sync.OnceFunc(func() {
-		flag.StringVar(&flagA, "a", defaultAddress, "address:host")
-		flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")
-		flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
-		flag.StringVar(&flagStorageFilePath, "f", defaultStorageFilePath, "file on disk with db")
-		flag.StringVar(&flagDomainName, "dn", "", "domain name")
-		flag.BoolVar(&flagEnableHTTPS, "s", false, "enable https")
-
-		flag.Parse()
-	})
+	flag.Parse()
 
 	type PublicConfig struct {
 		Address         string `env:"SERVER_ADDRESS"`

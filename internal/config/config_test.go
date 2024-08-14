@@ -37,7 +37,7 @@ func TestConfigEnv(t *testing.T) {
 	cfg, err := ParseConfig(slog.Default())
 	require.NoError(t, err)
 	assert.EqualValues(t, domain, cfg.Domain())
-	assert.EqualValues(t, serverAddress, cfg.Address())
+	assert.EqualValues(t, serverAddress+":443", cfg.Address())
 	assert.EqualValues(t, baseURL+"/", cfg.BaseAddress())
 	assert.EqualValues(t, fileStorage, cfg.FileStoragePath())
 	assert.EqualValues(t, database, cfg.DatabaseDSN())
@@ -76,9 +76,16 @@ func TestConfigEnv(t *testing.T) {
 }
 
 func TestHTTPS(t *testing.T) {
-	os.Setenv("ENABLE_HTTPS", "")
 	os.Setenv("SERVER_ADDRESS", "http://localhost:80")
 	cfg, err := ParseConfig(slog.Default())
 	require.NoError(t, err)
+	assert.EqualValues(t, "http://localhost:80", cfg.Address())
+	os.Setenv("ENABLE_HTTPS", "")
+	cfg, err = ParseConfig(slog.Default())
+	require.NoError(t, err)
 	assert.EqualValues(t, "https://localhost:443", cfg.Address())
+	os.Setenv("SERVER_ADDRESS", "localhost:80")
+	cfg, err = ParseConfig(slog.Default())
+	require.NoError(t, err)
+	assert.EqualValues(t, "localhost:443", cfg.Address())
 }
