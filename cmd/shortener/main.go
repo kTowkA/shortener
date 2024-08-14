@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -57,7 +56,7 @@ func main() {
 		customLog.Error("создание сервера приложения", slog.String("ошибка", err.Error()))
 		return
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer cancel()
 	if err = srv.Run(ctx, myStorage); err != nil {
 		customLog.Error("запуск сервера приложения", slog.String("ошибка", err.Error()))
