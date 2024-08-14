@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,7 @@ var (
 	flagStorageFilePath string
 	flagDatabaseDSN     string
 	flagDomainName      string
+	flagConfig          string
 	flagEnableHTTPS     bool
 )
 
@@ -91,11 +93,12 @@ var DefaultConfig = Config{
 }
 
 func init() {
-	flag.StringVar(&flagA, "a", defaultAddress, "address:host")
-	flag.StringVar(&flagB, "b", defaultBaseAddress, "result address")
+	flag.StringVar(&flagA, "a", "", "address:host")
+	flag.StringVar(&flagB, "b", "", "result address")
 	flag.StringVar(&flagDatabaseDSN, "d", "", "connect string. example postgres://username:password@localhost:5432/database_name")
-	flag.StringVar(&flagStorageFilePath, "f", defaultStorageFilePath, "file on disk with db")
+	flag.StringVar(&flagStorageFilePath, "f", "", "file on disk with db")
 	flag.StringVar(&flagDomainName, "dn", "", "domain name")
+	flag.StringVar(&flagConfig, "c", "", "config file(only JSON)")
 	flag.BoolVar(&flagEnableHTTPS, "s", false, "enable https")
 }
 
@@ -104,18 +107,19 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 	flag.Parse()
 
 	type PublicConfig struct {
-		Address         string `env:"SERVER_ADDRESS"`
-		BaseAddress     string `env:"BASE_URL"`
-		FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"/tmp/short-url-db.json"`
-		DatabaseDSN     string `env:"DATABASE_DSN"`
+		Address         string `env:"SERVER_ADDRESS" json:"server_address"`
+		BaseAddress     string `env:"BASE_URL" json:"base_url"`
+		FileStoragePath string `env:"FILE_STORAGE_PATH" json:"file_storage_path"`
+		DatabaseDSN     string `env:"DATABASE_DSN" json:"database_dsn"`
 		SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
-		EnableHTTPS     bool   `env:"ENABLE_HTTPS"`
-		DomainName      string `env:"DOMAIN"`
+		Config          string `env:"CONFIG"`
+		DomainName      string `env:"DOMAIN" json:"domain_name"`
+		EnableHTTPS     bool   `env:"ENABLE_HTTPS" json:"enable_https"`
 	}
 
 	cfg := PublicConfig{}
 
-	// чтобы работало ENABLE_HTTPS= как валидная установка значения
+	// чтобы работало ENABLE_HTTPS= как валидная установка значения. Иначе пакет github.com/caarlos0/env/v6 говорит, что ENABLE_HTTPS false
 	if val, ok := os.LookupEnv("ENABLE_HTTPS"); ok && val == "" {
 		os.Setenv("ENABLE_HTTPS", "true")
 	}
@@ -125,31 +129,32 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("сопостовление переменных окружения с объектом конфигурации. %w", err)
 	}
 
-	cfg.Address = setConfigValue(cfg.Address, flagA, defaultAddress)
+	// работаем с файлом конфигурации если он установлен
+	cfg.Config = getConfigValue(cfg.Config, flagConfig, "", "", "")
+	cfgFromFile := PublicConfig{}
+	if cfg.Config != "" {
+		err = parseConfigFromFile(&cfgFromFile, cfg.Config)
+		if err != nil {
+			return Config{}, fmt.Errorf("чтение файла конфигурации. %w", err)
+		}
+	}
 
-	cfg.BaseAddress = setConfigValue(cfg.BaseAddress, flagB, defaultBaseAddress)
+	// устанавливаем окончательные значения конфигурации выбирая из переменных окружения, флагов командной строки, значений из файла или значений по умолчанию
+	cfg.Address = getConfigValue(cfg.Address, flagA, cfgFromFile.Address, defaultAddress, "")
+	cfg.BaseAddress = getConfigValue(cfg.BaseAddress, flagB, cfgFromFile.BaseAddress, defaultBaseAddress, "")
 	cfg.BaseAddress = strings.TrimSuffix(cfg.BaseAddress, "/") + "/"
-
-	cfg.DatabaseDSN = setConfigValue(cfg.DatabaseDSN, flagDatabaseDSN, "")
-	cfg.FileStoragePath = setConfigValue(cfg.FileStoragePath, flagStorageFilePath, defaultStorageFilePath)
-	cfg.SecretKey = setConfigValue(cfg.SecretKey, "", defaultSecretKey)
-	cfg.DomainName = setConfigValue(cfg.DomainName, flagDomainName, "")
+	cfg.DatabaseDSN = getConfigValue(cfg.DatabaseDSN, flagDatabaseDSN, cfgFromFile.DatabaseDSN, "", "")
+	cfg.FileStoragePath = getConfigValue(cfg.FileStoragePath, flagStorageFilePath, cfgFromFile.FileStoragePath, defaultStorageFilePath, "")
+	cfg.SecretKey = getConfigValue(cfg.SecretKey, "", "", defaultSecretKey, "")
+	cfg.DomainName = getConfigValue(cfg.DomainName, flagDomainName, cfgFromFile.DomainName, "", "")
+	cfg.EnableHTTPS = getConfigValue(cfg.EnableHTTPS, flagEnableHTTPS, cfgFromFile.EnableHTTPS, false, false)
 
 	if cfg.EnableHTTPS {
-		if strings.HasPrefix(cfg.Address, "http://") {
-			cfg.Address = "https://" + strings.TrimPrefix(cfg.Address, "http://")
-		}
-		adrSl := strings.Split(cfg.Address, ":")
-		if len(adrSl) == 1 {
-			cfg.Address += ":443"
-		} else {
-			adrSl[len(adrSl)-1] = "443"
-			cfg.Address = strings.Join(adrSl, ":")
-		}
-		logger.Info("установлен HTTPS. Установили порт на 443")
+		cfg.Address = addressForHTTPS(cfg.Address)
 	}
 
 	logger.Debug("конфигурация",
+		slog.String("файл конфигурации", cfg.Config),
 		slog.String("адрес", cfg.Address),
 		slog.String("базовый адрес", cfg.BaseAddress),
 		slog.String("путь к файлу-хранилищу", cfg.FileStoragePath),
@@ -170,12 +175,43 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 	}, nil
 }
 
-func setConfigValue(envValue, flagValue, defaultValue string) string {
-	if envValue == "" {
-		if flagValue != "" {
-			return flagValue
+// getConfigValue возвращает нужное для установки значение конфигурации
+// приоритет envValue,далее flagValue, следом fileValue и значение по умолчанию defaultValue
+// notSetValue служит для проверки что значение не установлено
+func getConfigValue[T comparable](envValue, flagValue, fileValue, defaultValue, notSetValue T) T {
+	if envValue == notSetValue {
+		if flagValue == notSetValue {
+			if fileValue != notSetValue {
+				return fileValue
+			}
+			return defaultValue
 		}
-		return defaultValue
+		return flagValue
 	}
 	return envValue
+}
+
+// parseConfigFromFile читаем конфигурацию из файла filename, publicConfig должны передать указать на структуру PublicConfig из ParseConfig
+// не объявляю PublicConfig вне фукнции ParseConfig, чтобы у пользователя не было соблазна ее использовать
+func parseConfigFromFile(publicConfig any, filename string) error {
+	configFile, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("невозможно прочитать файл %s. %w", filename, err)
+	}
+	defer configFile.Close()
+	return json.NewDecoder(configFile).Decode(publicConfig)
+}
+
+func addressForHTTPS(address string) string {
+	if strings.HasPrefix(address, "http://") {
+		address = "https://" + strings.TrimPrefix(address, "http://")
+	}
+	adrSl := strings.Split(address, ":")
+	if len(adrSl) == 1 {
+		address += ":443"
+	} else {
+		adrSl[len(adrSl)-1] = "443"
+		address = strings.Join(adrSl, ":")
+	}
+	return address
 }

@@ -27,6 +27,14 @@ func TestConfigEnv(t *testing.T) {
 		secretKey     = "test_secret_key"
 		enableHTTPS   = "true"
 	)
+	defer os.Unsetenv("DOMAIN")
+	defer os.Unsetenv("ENABLE_HTTPS")
+	defer os.Unsetenv("SECRET_KEY")
+	defer os.Unsetenv("DATABASE_DSN")
+	defer os.Unsetenv("FILE_STORAGE_PATH")
+	defer os.Unsetenv("BASE_URL")
+	defer os.Unsetenv("SERVER_ADDRESS")
+
 	os.Setenv("DOMAIN", domain)
 	os.Setenv("ENABLE_HTTPS", enableHTTPS)
 	os.Setenv("SECRET_KEY", secretKey)
@@ -76,6 +84,8 @@ func TestConfigEnv(t *testing.T) {
 }
 
 func TestHTTPS(t *testing.T) {
+	defer os.Unsetenv("SERVER_ADDRESS")
+	defer os.Unsetenv("ENABLE_HTTPS")
 	os.Setenv("SERVER_ADDRESS", "http://localhost:80")
 	cfg, err := ParseConfig(slog.Default())
 	require.NoError(t, err)
@@ -88,4 +98,41 @@ func TestHTTPS(t *testing.T) {
 	cfg, err = ParseConfig(slog.Default())
 	require.NoError(t, err)
 	assert.EqualValues(t, "localhost:443", cfg.Address())
+}
+func TestConfigFile(t *testing.T) {
+	var (
+		domain        = "domain_name_test"
+		serverAddress = "server_address_test"
+		baseURL       = "base_url_test"
+		fileStorage   = "file_storage_path_test"
+		database      = "database_dsn_test"
+		enableHTTPS   = "true"
+	)
+	test := `{
+		"server_address":"` + serverAddress + `",
+		"base_url":"` + baseURL + `",
+		"file_storage_path":"` + fileStorage + `",
+		"database_dsn":"` + database + `",
+		"domain_name":"` + domain + `",
+		"enable_https":` + enableHTTPS + `
+	}`
+	file, err := os.CreateTemp("", "test_file")
+	require.NoError(t, err)
+	defer func() {
+		err = os.Remove(file.Name())
+		require.NoError(t, err)
+	}()
+	_, err = file.WriteString(test)
+	require.NoError(t, err)
+	defer os.Unsetenv("CONFIG")
+	err = os.Setenv("CONFIG", file.Name())
+	require.NoError(t, err)
+	cfg, err := ParseConfig(slog.Default())
+	require.NoError(t, err)
+	assert.EqualValues(t, domain, cfg.Domain())
+	assert.EqualValues(t, serverAddress+":443", cfg.Address())
+	assert.EqualValues(t, baseURL+"/", cfg.BaseAddress())
+	assert.EqualValues(t, fileStorage, cfg.FileStoragePath())
+	assert.EqualValues(t, database, cfg.DatabaseDSN())
+	assert.True(t, cfg.HTTPS())
 }
