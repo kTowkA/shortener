@@ -16,6 +16,7 @@ import (
 	"github.com/kTowkA/shortener/internal/config"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
+	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -41,14 +42,26 @@ type Server struct {
 // NewServer создает новый экземпляр сервера с конфигурацией cfg и логером logger.
 // Возвращает сервер и ошибку
 func NewServer(cfg config.Config, logger *slog.Logger) (*Server, error) {
-	return &Server{
+	s := &Server{
 		Config: cfg,
 		logger: logger,
 		server: &http.Server{
 			Addr: cfg.Address(),
 		},
 		deleteMessage: make(chan model.DeleteURLMessage, 100),
-	}, nil
+	}
+
+	// включен HTTPS
+	if s.Config.HTTPS() {
+		// установлено доменное имя
+		if s.Config.Domain() != "" {
+			s.server.TLSConfig = (&autocert.Manager{
+				HostPolicy: autocert.HostWhitelist(s.Config.Domain()),
+				Prompt:     autocert.AcceptTOS,
+			}).TLSConfig()
+		}
+	}
+	return s, nil
 }
 
 // Run запуск сервера с указанием контекста для отмены ctx и хранилища storage
@@ -67,7 +80,14 @@ func (s *Server) Run(ctx context.Context, storage storage.Storager) error {
 
 		s.logger.Info("запуск приложения", slog.String("адрес", s.Config.Address()))
 
-		if err := s.server.ListenAndServe(); err != nil {
+		var err error
+		if s.Config.HTTPS() {
+			err = s.server.ListenAndServeTLS("", "")
+		} else {
+			err = s.server.ListenAndServe()
+		}
+
+		if err != nil {
 			if !errors.Is(err, http.ErrServerClosed) {
 				s.logger.Error("запуск сервера", slog.String("ошибка", err.Error()))
 			}
