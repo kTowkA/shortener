@@ -15,17 +15,19 @@ func TestParseConfig(t *testing.T) {
 	assert.EqualValues(t, defaultAddress, cfg.Address())
 	assert.EqualValues(t, defaultBaseAddress, cfg.BaseAddress())
 	assert.EqualValues(t, defaultStorageFilePath, cfg.FileStoragePath())
+	assert.EqualValues(t, "<nil>", cfg.TrustedSubnet().String())
 }
 
 func TestConfigEnv(t *testing.T) {
 	var (
-		domain        = "test_domain"
-		serverAddress = "test_server_address"
-		baseURL       = "test_base_url"
-		fileStorage   = "test_file_storage"
-		database      = "test_database"
-		secretKey     = "test_secret_key"
-		enableHTTPS   = "true"
+		domain         = "test_domain"
+		serverAddress  = "test_server_address"
+		baseURL        = "test_base_url"
+		fileStorage    = "test_file_storage"
+		database       = "test_database"
+		secretKey      = "test_secret_key"
+		trusted_subnet = "trusted_subnet"
+		enableHTTPS    = "true"
 	)
 	defer os.Unsetenv("DOMAIN")
 	defer os.Unsetenv("ENABLE_HTTPS")
@@ -34,6 +36,7 @@ func TestConfigEnv(t *testing.T) {
 	defer os.Unsetenv("FILE_STORAGE_PATH")
 	defer os.Unsetenv("BASE_URL")
 	defer os.Unsetenv("SERVER_ADDRESS")
+	defer os.Unsetenv("TRUSTED_SUBNET")
 
 	os.Setenv("DOMAIN", domain)
 	os.Setenv("ENABLE_HTTPS", enableHTTPS)
@@ -42,6 +45,7 @@ func TestConfigEnv(t *testing.T) {
 	os.Setenv("FILE_STORAGE_PATH", fileStorage)
 	os.Setenv("BASE_URL", baseURL)
 	os.Setenv("SERVER_ADDRESS", serverAddress)
+	os.Setenv("TRUSTED_SUBNET", trusted_subnet)
 	cfg, err := ParseConfig(slog.Default())
 	require.NoError(t, err)
 	assert.EqualValues(t, domain, cfg.Domain())
@@ -50,6 +54,7 @@ func TestConfigEnv(t *testing.T) {
 	assert.EqualValues(t, fileStorage, cfg.FileStoragePath())
 	assert.EqualValues(t, database, cfg.DatabaseDSN())
 	assert.EqualValues(t, secretKey, cfg.SecretKey())
+	assert.EqualValues(t, "<nil>", cfg.TrustedSubnet().String())
 	assert.True(t, cfg.HTTPS())
 
 	os.Setenv("ENABLE_HTTPS", "")
@@ -81,6 +86,12 @@ func TestConfigEnv(t *testing.T) {
 	cfg, err = ParseConfig(slog.Default())
 	require.NoError(t, err)
 	assert.False(t, cfg.HTTPS())
+
+	trusted_subnet = "192.168.1.0/24"
+	os.Setenv("TRUSTED_SUBNET", trusted_subnet)
+	cfg, err = ParseConfig(slog.Default())
+	require.NoError(t, err)
+	assert.EqualValues(t, trusted_subnet, cfg.TrustedSubnet().String())
 }
 
 func TestHTTPS(t *testing.T) {
@@ -101,12 +112,13 @@ func TestHTTPS(t *testing.T) {
 }
 func TestConfigFile(t *testing.T) {
 	var (
-		domain        = "domain_name_test"
-		serverAddress = "server_address_test"
-		baseURL       = "base_url_test"
-		fileStorage   = "file_storage_path_test"
-		database      = "database_dsn_test"
-		enableHTTPS   = "true"
+		domain         = "domain_name_test"
+		serverAddress  = "server_address_test"
+		baseURL        = "base_url_test"
+		fileStorage    = "file_storage_path_test"
+		database       = "database_dsn_test"
+		trusted_subnet = "192.168.1.0/24"
+		enableHTTPS    = "true"
 	)
 	test := `{
 		"server_address":"` + serverAddress + `",
@@ -114,7 +126,8 @@ func TestConfigFile(t *testing.T) {
 		"file_storage_path":"` + fileStorage + `",
 		"database_dsn":"` + database + `",
 		"domain_name":"` + domain + `",
-		"enable_https":` + enableHTTPS + `
+		"enable_https":` + enableHTTPS + `,
+		"trusted_subnet":"` + trusted_subnet + `"
 	}`
 	file, err := os.CreateTemp("", "test_file")
 	require.NoError(t, err)
@@ -134,5 +147,6 @@ func TestConfigFile(t *testing.T) {
 	assert.EqualValues(t, baseURL+"/", cfg.BaseAddress())
 	assert.EqualValues(t, fileStorage, cfg.FileStoragePath())
 	assert.EqualValues(t, database, cfg.DatabaseDSN())
+	assert.EqualValues(t, trusted_subnet, cfg.TrustedSubnet().String())
 	assert.True(t, cfg.HTTPS())
 }
