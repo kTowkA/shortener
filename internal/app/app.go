@@ -139,6 +139,12 @@ func (s *Server) setRoute() {
 				r.Delete("/user/urls", s.deleteUserURLs)
 			})
 			r.Get("/user/urls", s.getUserURLs)
+
+			r.Route("/internal", func(r chi.Router) {
+				r.Use(s.trustedSubnet)
+				r.Get("/stats", s.stats)
+			})
+
 		})
 		r.Get("/ping", s.ping)
 	})

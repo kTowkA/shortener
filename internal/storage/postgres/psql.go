@@ -271,3 +271,8 @@ func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stor
 	}
 	return results, nil
 }
+
+// Stats реализация интерфейса Storager
+func (p *PStorage) Stats(ctx context.Context) (model.StatsResponse, error) {
+	return model.StatsResponse{}, nil
+}

@@ -319,6 +319,23 @@ func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.db.Stats(r.Context())
+	if err != nil {
+		s.logger.Error("запрос статистики сервиса", slog.String("ошибка", err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	result, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		s.logger.Error("конвертация в json", slog.String("ошибка", err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result)
+}
 
 func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
 	const forUnique = "X"

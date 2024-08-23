@@ -52,3 +52,9 @@ type BatchResponseElement struct {
 	Collision     bool   `json:"-"`
 	Error         error  `json:"-"`
 }
+
+// StatsResponse статистика сервиса (корличество пользователей и запросов) для внутреннего использования
+type StatsResponse struct {
+	TotalUsers int `json:"users"`
+	TotalURLs  int `json:"urls"`
+}

@@ -260,3 +260,8 @@ func (s *Storage) rewriteFile() error {
 	}
 	return nil
 }
+
+// Stats memory реализация интерфейса Storager
+func (s *Storage) Stats(ctx context.Context) (model.StatsResponse, error) {
+	return model.StatsResponse{}, nil
+}

@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -596,6 +597,104 @@ func (suite *AppSuite) TestAPIBatch() {
 		suite.EqualValues(t.wantStatus, resp.StatusCode(), t.name)
 		if t.wantBody != nil {
 			result := model.BatchResponse{}
+			err = json.Unmarshal(resp.Body(), &result)
+			suite.Require().NoError(err, t.name)
+			suite.EqualValues(t.wantBody, result, t.name)
+		}
+	}
+}
+
+func (suite *AppSuite) TestStats() {
+	ctx, cancel := context.WithTimeout(context.Background(), waitCtxTest)
+	defer cancel()
+
+	// создаем тестовый сервер без подсети
+	srvV1, err := NewServer(config.DefaultConfig, slog.Default())
+	suite.Require().NoError(err, "create server 1")
+	srvV1.setRoute()
+	tsV1 := httptest.NewServer(srvV1.server.Handler)
+	defer tsV1.Close()
+
+	// создаем тестовый сервер с подсетью
+	trusted_subnet := "192.168.1.0/24"
+	os.Setenv("TRUSTED_SUBNET", trusted_subnet)
+	defer os.Unsetenv("TRUSTED_SUBNET")
+	cfg, err := config.ParseConfig(slog.Default())
+	suite.Require().NoError(err, "parse config")
+	srvV2, err := NewServer(cfg, slog.Default())
+	suite.Require().NoError(err, "create server 2")
+	mockStorageV2 := new(mocks.Storager)
+	srvV2.db = mockStorageV2
+	srvV2.setRoute()
+	tsV2 := httptest.NewServer(srvV2.server.Handler)
+	defer tsV2.Close()
+
+	const path = "/api/internal/stats"
+	cl := resty.New()
+	want := model.StatsResponse{
+		TotalUsers: 11,
+		TotalURLs:  22,
+	}
+	tests := []Test{
+		{
+			name: "пустая подсеть, запросы не разрешены",
+			call: func() (*resty.Response, error) {
+				return cl.R().SetContext(ctx).Get(tsV1.URL + path)
+			},
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "есть подсеть, X-Real-IP не установлен",
+			wantStatus: http.StatusForbidden,
+			call: func() (*resty.Response, error) {
+				return cl.R().SetContext(ctx).Get(tsV2.URL + path)
+			},
+		},
+		{
+			name:       "есть подсеть, X-Real-IP плохой",
+			wantStatus: http.StatusForbidden,
+			call: func() (*resty.Response, error) {
+				return cl.R().SetHeader("X-Real-IP", "553.555.555.555").SetContext(ctx).Get(tsV2.URL + path)
+			},
+		},
+		{
+			name:       "есть подсеть,X-Real-IP из другой подсети",
+			wantStatus: http.StatusForbidden,
+			call: func() (*resty.Response, error) {
+				return cl.R().SetHeader("X-Real-IP", "192.168.3.15").SetContext(ctx).Get(tsV2.URL + path)
+			},
+		},
+		{
+			name:       "есть подсеть,X-Real-IP валиден, при запросе из БД ошибка",
+			wantStatus: http.StatusInternalServerError,
+			call: func() (*resty.Response, error) {
+				return cl.R().SetHeader("X-Real-IP", "192.168.1.15").SetContext(ctx).Get(tsV2.URL + path)
+			},
+			callStorage: func() *mock.Call {
+				return mockStorageV2.On("Stats", mock.Anything).Return(model.StatsResponse{}, errors.New("!")).Once()
+			},
+		},
+		{
+			name:       "есть подсеть,X-Real-IP валиден, при запросе из БД все хорошо",
+			wantStatus: http.StatusOK,
+			call: func() (*resty.Response, error) {
+				return cl.R().SetHeader("X-Real-IP", "192.168.1.15").SetContext(ctx).Get(tsV2.URL + path)
+			},
+			callStorage: func() *mock.Call {
+				return mockStorageV2.On("Stats", mock.Anything).Return(want, nil).Once()
+			},
+		},
+	}
+
+	for _, t := range tests {
+		if t.callStorage != nil {
+			t.callStorage()
+		}
+		resp, err := t.call()
+		suite.Require().NoError(err, t.name)
+		suite.EqualValues(t.wantStatus, resp.StatusCode(), t.name)
+		if t.wantBody != nil {
+			result := model.StatsResponse{}
 			err = json.Unmarshal(resp.Body(), &result)
 			suite.Require().NoError(err, t.name)
 			suite.EqualValues(t.wantBody, result, t.name)

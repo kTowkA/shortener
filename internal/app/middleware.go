@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -240,4 +241,35 @@ func getUserIDFromCookie(r *http.Request, secret string) (uuid.UUID, error) {
 		return uuid.UUID{}, fmt.Errorf("userID не представляет собой UUID. %w", err)
 	}
 	return userID, nil
+}
+
+// trustedSubnet проверяем что X-Real-IP входит в заданную подсеть
+// иначе 403
+// если пустое значение trusted_subnet, то тоже запрещено
+func (s *Server) trustedSubnet(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.Config.TrustedSubnet().String() == "<nil>" {
+			s.logger.Error("попытка доступа к закрытому ресурсу", slog.String("ошибка", "доверенная подсеть не установлена"))
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		ipStr := r.Header.Get("X-Real-IP")
+		if ipStr == "" {
+			s.logger.Error("попытка доступа к закрытому ресурсу", slog.String("ошибка", "X-Real-IP не заполнен"))
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			s.logger.Error("попытка доступа к закрытому ресурсу", slog.String("ошибка", "X-Real-IP невалиден"))
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if !s.Config.TrustedSubnet().Contains(ip) {
+			s.logger.Error("попытка доступа к закрытому ресурсу", slog.String("ошибка", "ip из другой сети"), slog.String("ip", ip.String()))
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
