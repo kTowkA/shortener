@@ -616,8 +616,8 @@ func (suite *AppSuite) TestStats() {
 	defer tsV1.Close()
 
 	// создаем тестовый сервер с подсетью
-	trusted_subnet := "192.168.1.0/24"
-	os.Setenv("TRUSTED_SUBNET", trusted_subnet)
+	trustedSubnet := "192.168.1.0/24"
+	os.Setenv("TRUSTED_SUBNET", trustedSubnet)
 	defer os.Unsetenv("TRUSTED_SUBNET")
 	cfg, err := config.ParseConfig(slog.Default())
 	suite.Require().NoError(err, "parse config")
