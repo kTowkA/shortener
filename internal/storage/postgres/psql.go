@@ -274,5 +274,10 @@ func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stor
 
 // Stats реализация интерфейса Storager
 func (p *PStorage) Stats(ctx context.Context) (model.StatsResponse, error) {
-	return model.StatsResponse{}, nil
+	result := model.StatsResponse{}
+	err := p.QueryRow(ctx, "SELECT COUNT(DISTINCT(user_id)) AS c1,COUNT(DISTINCT(short_url)) AS c2 FROM url_list").Scan(&result.TotalUsers, &result.TotalURLs)
+	if err != nil {
+		return model.StatsResponse{}, err
+	}
+	return result, nil
 }
