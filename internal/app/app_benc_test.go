@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kTowkA/shortener/internal/model"
+	"github.com/kTowkA/shortener/internal/utils"
 )
 
 func BenchmarkGenerateSHA1(b *testing.B) {
@@ -14,7 +15,7 @@ func BenchmarkGenerateSHA1(b *testing.B) {
 			b.StopTimer()
 			str := randomString(5, 30)
 			b.StartTimer()
-			_, _ = generateSHA1(str, 5)
+			_, _ = utils.GenerateShortStringSHA1(str, 5)
 		}
 	})
 	b.Run("lenght 10", func(b *testing.B) {
@@ -22,7 +23,7 @@ func BenchmarkGenerateSHA1(b *testing.B) {
 			b.StopTimer()
 			str := randomString(5, 30)
 			b.StartTimer()
-			_, _ = generateSHA1(str, 10)
+			_, _ = utils.GenerateShortStringSHA1(str, 10)
 		}
 	})
 	b.Run("lenght 15", func(b *testing.B) {
@@ -30,7 +31,7 @@ func BenchmarkGenerateSHA1(b *testing.B) {
 			b.StopTimer()
 			str := randomString(5, 30)
 			b.StartTimer()
-			_, _ = generateSHA1(str, 10)
+			_, _ = utils.GenerateShortStringSHA1(str, 10)
 		}
 	})
 }

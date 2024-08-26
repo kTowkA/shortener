@@ -4,21 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
+	"github.com/kTowkA/shortener/internal/utils"
 )
 
 // encodeURL обработчик для кодирования входящего урла
@@ -66,11 +63,11 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 
-	newLink, err := s.saveLink(r.Context(), userID, link, attems)
+	newLink, err := utils.SaveLink(r.Context(), s.db, userID, link)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLConflict) {
 			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(newLink))
+			_, _ = w.Write([]byte(s.Config.BaseAddress() + newLink))
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -78,7 +75,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	_, _ = w.Write([]byte(newLink))
+	_, _ = w.Write([]byte(s.Config.BaseAddress() + newLink))
 }
 
 // decodeURL обработчик для декодирования короткой ссылки
@@ -145,7 +142,8 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		userID = uuid.New()
 	}
-	newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
+	// newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
+	newLink, err := utils.SaveLink(r.Context(), s.db, userID, req.URL)
 	if errors.Is(err, storage.ErrURLConflict) {
 		conflict = true
 	}
@@ -155,7 +153,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := model.ResponseShortURL{
-		Result: newLink,
+		Result: s.Config.BaseAddress() + newLink,
 	}
 	resp, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
@@ -337,33 +335,6 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(result)
 }
 
-func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
-	const forUnique = "X"
-	genLink, err := generateSHA1(link, defaultLenght)
-	if err != nil {
-		return "", err
-	}
-
-	// создаем короткую ссылка за attems попыток генерации
-	for i := 0; i < attems; i++ {
-		savedLink, err := s.db.SaveURL(ctx, userID, link, genLink)
-		// такая ссылка уже существует
-		if errors.Is(err, storage.ErrURLIsExist) {
-			genLink = genLink + forUnique
-			continue
-		} else if errors.Is(err, storage.ErrURLConflict) {
-			return s.Config.BaseAddress() + savedLink, err
-		} else if err != nil {
-			return "", err
-		}
-
-		// успешно
-		return s.Config.BaseAddress() + savedLink, nil
-	}
-
-	// не уложись в заданное количество попыток для создания короткой ссылки
-	return "", errors.New("не смогли создать короткую ссылку")
-}
 func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
 	result := make([]model.BatchResponseElement, 0, len(batch))
 	for i := 0; i < attems; i++ {
@@ -413,31 +384,6 @@ func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.Ba
 	}
 	return result, nil
 }
-func generateSHA1(original string, lenght int) (string, error) {
-	// получаем sha1
-	sum := sha1.Sum([]byte(original))
-	symbols := hex.EncodeToString(sum[:])
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	result := strings.Builder{}
-	result.Grow(20)
-	change := 0
-	for _, rs := range symbols {
-		s := string(rs)
-		change = r.Intn(2)
-		if change == 1 {
-			s = strings.ToUpper(s)
-		}
-		_, err := result.WriteString(s)
-		if err != nil {
-			return "", err
-		}
-		if result.Len() == lenght {
-			break
-		}
-	}
-	return result.String(), nil
-}
 
 func validateBatch(batch model.BatchRequest) model.BatchRequest {
 	newBatch := make([]model.BatchRequestElement, 0, len(batch))
@@ -461,7 +407,7 @@ func generateLinksBatch(batch model.BatchRequest) error {
 			batch[i].ShortURL += bonus
 			continue
 		}
-		short, err := generateSHA1(batch[i].OriginalURL, defaultLenght)
+		short, err := utils.GenerateShortStringSHA1(batch[i].OriginalURL, defaultLenght)
 		if err != nil {
 			return err
 		}
