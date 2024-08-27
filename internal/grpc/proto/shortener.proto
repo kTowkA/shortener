@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package shortener;
 
-option go_package = "github.com/kTowkA/shortener/internal/proto";
+option go_package = "github.com/kTowkA/shortener/internal/grpc/proto";
 message BatchRequest{
   message BatchRequestElement {
     string correlation_id = 1 [json_name = "correlation_id"];
@@ -16,7 +16,6 @@ message BatchResponse{
     string short_url = 2 [json_name = "short_url"];
   }
   repeated Result result = 1;
-  string error = 2 [json_name = "error"];
 }
 message UserURLsRequest{
   string user_id = 1 [json_name = "user_id"];
@@ -28,15 +27,12 @@ message UserURLsResponse{
     string original_url = 3 [json_name = "original_url"];
     bool is_deleted = 4 [json_name = "is_deleted"];
   }
-  Result result = 1[json_name = "result"];
-  string error = 2 [json_name = "error"];
+  repeated Result result = 1[json_name = "result"];
 }
 message DelUserRequest {
-  string user_id = 1 [json_name = "user_id"];
-  repeated string short_urls = 2 [json_name = "short_urls"];
+  repeated string short_urls = 1 [json_name = "short_urls"];
 }
-message DeleteUserURLsResponse {
-  string error = 1 [json_name = "error"];    
+message DeleteUserURLsResponse { 
 }
 message PingRequest {
 }
@@ -53,8 +49,7 @@ message StatsResponse {
     int32 urls = 2 [json_name = "urls"];
 }
 message EncodeURLRequest{
-  string user_id = 1 [json_name = "user_id"];
-  string original_url = 2 [json_name = "original_url"];
+  string original_url = 1 [json_name = "original_url"];
 }
 message EncodeURLResponse{
   string saved_link = 1 [json_name = "saved_link"];

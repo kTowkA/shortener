@@ -65,7 +65,7 @@ func BenchmarkGenerateLinksBatch(b *testing.B) {
 			b.StopTimer()
 			batch := generateBatch(100)
 			b.StartTimer()
-			_ = generateLinksBatch(batch)
+			_ = utils.GenerateShortStringsSHA1ForBatch(batch)
 		}
 	})
 	b.Run("batch 1000", func(b *testing.B) {
@@ -73,7 +73,7 @@ func BenchmarkGenerateLinksBatch(b *testing.B) {
 			b.StopTimer()
 			batch := generateBatch(1000)
 			b.StartTimer()
-			_ = generateLinksBatch(batch)
+			_ = utils.GenerateShortStringsSHA1ForBatch(batch)
 		}
 	})
 }

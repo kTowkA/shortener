@@ -3,7 +3,6 @@ package app
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -205,7 +204,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("Unmarshal")
 		return
 	}
-	req = validateBatch(req)
+	req = utils.ValidateAndGenerateBatch(req)
 	// проверяем, что есть запросы
 	if len(req) == 0 {
 		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
@@ -216,10 +215,15 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		userID = uuid.New()
 	}
-	resp, err := s.saveBatch(r.Context(), userID, req, attems)
+	resp, err := utils.SaveBatch(r.Context(), s.db, userID, req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	for i := range resp {
+		if resp[i].ShortURL != "" {
+			resp[i].ShortURL = s.Config.BaseAddress() + resp[i].ShortURL
+		}
 	}
 
 	result, err := json.MarshalIndent(resp, "", "  ")
@@ -333,85 +337,4 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(result)
-}
-
-func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
-	result := make([]model.BatchResponseElement, 0, len(batch))
-	for i := 0; i < attems; i++ {
-		err := generateLinksBatch(batch)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := s.db.Batch(ctx, userID, batch)
-		if err != nil {
-			return nil, err
-		}
-		// очищаем batch и будем складывать в него строки с коллизиями
-		batch = make(model.BatchRequest, 0)
-		for i := range resp {
-			if resp[i].ShortURL != "" {
-				resp[i].ShortURL = s.Config.BaseAddress() + resp[i].ShortURL
-				result = append(result, resp[i])
-				continue
-			}
-			if resp[i].Error != nil {
-				s.logger.Error("ошибка в batch",
-					slog.String("original_url", resp[i].OriginalURL),
-					slog.String("ошибка", resp[i].Error.Error()),
-				)
-
-			}
-			// если были колизии пробуем сохранить с добавлением подстроки
-			if resp[i].Collision {
-				batch = append(batch, model.BatchRequestElement{
-					CorrelationID: resp[i].CorrelationID,
-					OriginalURL:   resp[i].OriginalURL,
-					ShortURL:      resp[i].ShortURL,
-				})
-			}
-		}
-		if len(batch) == 0 {
-			break
-		}
-	}
-	// не смогли уложиться в заданное количество попыток для сохранения всех ссылок
-	if len(batch) != 0 {
-		s.logger.Debug("не смогли уложиться в заданное количество попыток для сохранения всех ссылок",
-			slog.Int("сохранено", len(result)),
-			slog.Int("не сохранено", len(batch)),
-		)
-		return nil, fmt.Errorf("не было сохранено %d записей", len(batch))
-	}
-	return result, nil
-}
-
-func validateBatch(batch model.BatchRequest) model.BatchRequest {
-	newBatch := make([]model.BatchRequestElement, 0, len(batch))
-	for _, v := range batch {
-		v.OriginalURL = strings.TrimSpace(v.OriginalURL)
-		if v.OriginalURL == "" {
-			continue
-		}
-		if _, err := url.ParseRequestURI(v.OriginalURL); err != nil {
-			continue
-		}
-		newBatch = append(newBatch, v)
-	}
-	return newBatch
-}
-
-func generateLinksBatch(batch model.BatchRequest) error {
-	bonus := "X"
-	for i := range batch {
-		if batch[i].ShortURL != "" {
-			batch[i].ShortURL += bonus
-			continue
-		}
-		short, err := utils.GenerateShortStringSHA1(batch[i].OriginalURL, defaultLenght)
-		if err != nil {
-			return err
-		}
-		batch[i].ShortURL = short
-	}
-	return nil
 }

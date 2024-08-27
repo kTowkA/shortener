@@ -1,23 +1,19 @@
 package utils
 
 import (
-	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"errors"
-	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"math/rand"
 
-	"github.com/google/uuid"
-	"github.com/kTowkA/shortener/internal/storage"
+	"github.com/kTowkA/shortener/internal/model"
 )
 
-const (
-	defaultLenght = 7
-	attems        = 10
+var (
+	bonus = []string{"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"}
 )
 
 // GenerateShortStringSHA1 генерирует новую строку с применение алгоритма sha1 из original, обрезая ее длину до lenght и переводя случайные символы в верхний регистр
@@ -47,31 +43,34 @@ func GenerateShortStringSHA1(original string, lenght int) (string, error) {
 	return result.String(), nil
 }
 
-// SaveLink пробует сгенерировать новую сокращеннуб ссылку для link за attems попыток для пользователя userID и сохранить в store.
-func SaveLink(ctx context.Context, store storage.Storager, userID uuid.UUID, link string) (string, error) {
-	bonus := []string{"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"}
-	genLink, err := GenerateShortStringSHA1(link, defaultLenght)
-	if err != nil {
-		return "", err
-	}
-
-	// создаем короткую ссылка за attems попыток генерации
-	for i := 0; i < attems; i++ {
-		savedLink, err := store.SaveURL(ctx, userID, link, genLink)
-		// такая ссылка уже существует
-		if errors.Is(err, storage.ErrURLIsExist) {
-			genLink = genLink + bonus[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(bonus))]
+// GenerateShortStringsSHA1ForBatch генерирует новую строку для каждого элемента batch
+func GenerateShortStringsSHA1ForBatch(batch model.BatchRequest) error {
+	for i := range batch {
+		if batch[i].ShortURL != "" {
+			batch[i].ShortURL += bonus[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(bonus))]
 			continue
-		} else if errors.Is(err, storage.ErrURLConflict) {
-			return savedLink, err
-		} else if err != nil {
-			return "", err
 		}
-
-		// успешно
-		return savedLink, nil
+		short, err := GenerateShortStringSHA1(batch[i].OriginalURL, defaultLenght)
+		if err != nil {
+			return err
+		}
+		batch[i].ShortURL = short
 	}
+	return nil
+}
 
-	// не уложись в заданное количество попыток для создания короткой ссылки
-	return "", fmt.Errorf("не смогли создать короткую ссылку за %d попыток генерации", attems)
+// ValidateAndGenerateBatch проверяет переданный batch, удаляя пустые значения и невалидные ссылки. Возвращает model.BatchRequest только с валидными ссылками
+func ValidateAndGenerateBatch(batch model.BatchRequest) model.BatchRequest {
+	newBatch := make([]model.BatchRequestElement, 0, len(batch))
+	for _, v := range batch {
+		v.OriginalURL = strings.TrimSpace(v.OriginalURL)
+		if v.OriginalURL == "" {
+			continue
+		}
+		if _, err := url.ParseRequestURI(v.OriginalURL); err != nil {
+			continue
+		}
+		newBatch = append(newBatch, v)
+	}
+	return newBatch
 }

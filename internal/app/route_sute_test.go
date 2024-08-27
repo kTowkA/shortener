@@ -596,10 +596,14 @@ func (suite *AppSuite) TestAPIBatch() {
 		suite.Require().NoError(err, t.name)
 		suite.EqualValues(t.wantStatus, resp.StatusCode(), t.name)
 		if t.wantBody != nil {
+			wb := (t.wantBody).(model.BatchResponse)
+			for i := range wb {
+				wb[i].ShortURL = config.DefaultConfig.BaseAddress() + wb[i].ShortURL
+			}
 			result := model.BatchResponse{}
 			err = json.Unmarshal(resp.Body(), &result)
 			suite.Require().NoError(err, t.name)
-			suite.EqualValues(t.wantBody, result, t.name)
+			suite.EqualValues(wb, result, t.name)
 		}
 	}
 }
