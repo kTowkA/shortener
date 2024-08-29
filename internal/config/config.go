@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 
@@ -27,6 +28,8 @@ var (
 	flagDatabaseDSN     string
 	flagDomainName      string
 	flagConfig          string
+	flagTrustedSubnet   string
+	flagGRPC            string
 	flagEnableHTTPS     bool
 )
 
@@ -37,6 +40,8 @@ type Config struct {
 	fileStoragePath string
 	databaseDSN     string
 	secretKey       string
+	gRPC            string
+	trustedSubnet   *net.IPNet
 	configHTTPS
 }
 
@@ -48,6 +53,11 @@ type configHTTPS struct {
 // Domain возвращает доменное имя, если оно было установлено
 func (c *Config) Domain() string {
 	return c.configHTTPS.domain
+}
+
+// GRPC возвращает адрес grpc
+func (c *Config) GRPC() string {
+	return c.gRPC
 }
 
 // HTTPS возвращает true если в настройках установлено, что требуется поднять https-соединение, в противном случае - false
@@ -80,12 +90,19 @@ func (c *Config) SecretKey() string {
 	return c.secretKey
 }
 
+// TrustedSubnet возвращает строковое представление бесклассовой адресации (CIDR)
+func (c *Config) TrustedSubnet() *net.IPNet {
+	return c.trustedSubnet
+}
+
 // DefaultConfig конфигурация по умолчанию для быстрой настройки
 var DefaultConfig = Config{
 	address:         defaultAddress,
 	baseAddress:     defaultBaseAddress,
 	fileStoragePath: defaultStorageFilePath,
 	secretKey:       defaultSecretKey,
+	gRPC:            "",
+	trustedSubnet:   &net.IPNet{},
 	configHTTPS: configHTTPS{
 		enable: false,
 		domain: "",
@@ -99,6 +116,8 @@ func init() {
 	flag.StringVar(&flagStorageFilePath, "f", "", "file on disk with db")
 	flag.StringVar(&flagDomainName, "dn", "", "domain name")
 	flag.StringVar(&flagConfig, "c", "", "config file(only JSON)")
+	flag.StringVar(&flagTrustedSubnet, "t", "", "trusted subnet")
+	flag.StringVar(&flagGRPC, "g", "", "address gRPC")
 	flag.BoolVar(&flagEnableHTTPS, "s", false, "enable https")
 }
 
@@ -114,6 +133,8 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		SecretKey       string `env:"SECRET_KEY" envDefault:"my_super_secret_key"`
 		Config          string `env:"CONFIG"`
 		DomainName      string `env:"DOMAIN" json:"domain_name"`
+		GRPC            string `env:"GRPC" json:"grpc"`
+		TrustedSubnet   string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
 		EnableHTTPS     bool   `env:"ENABLE_HTTPS" json:"enable_https"`
 	}
 
@@ -148,6 +169,15 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 	cfg.SecretKey = getConfigValue(cfg.SecretKey, "", "", defaultSecretKey, "")
 	cfg.DomainName = getConfigValue(cfg.DomainName, flagDomainName, cfgFromFile.DomainName, "", "")
 	cfg.EnableHTTPS = getConfigValue(cfg.EnableHTTPS, flagEnableHTTPS, cfgFromFile.EnableHTTPS, false, false)
+	cfg.GRPC = getConfigValue(cfg.GRPC, flagGRPC, cfgFromFile.GRPC, "", "")
+
+	cfg.TrustedSubnet = getConfigValue(cfg.TrustedSubnet, flagTrustedSubnet, cfgFromFile.TrustedSubnet, "", "")
+	_, ipnet, err := net.ParseCIDR(cfg.TrustedSubnet)
+	// не стал выходить из функции, просто выведем ошибку
+	if err != nil {
+		logger.Error("конвертация CIDR", slog.String("ошибка", err.Error()))
+		ipnet = &net.IPNet{}
+	}
 
 	if cfg.EnableHTTPS {
 		cfg.Address = addressForHTTPS(cfg.Address)
@@ -161,6 +191,8 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		slog.String("строка соединения с БД", cfg.DatabaseDSN),
 		slog.Bool("статус https", cfg.EnableHTTPS),
 		slog.String("доменное имя", cfg.DomainName),
+		slog.String("gRPC", cfg.GRPC),
+		slog.String("CIDR", cfg.TrustedSubnet),
 	)
 	return Config{
 		address:         cfg.Address,
@@ -168,6 +200,8 @@ func ParseConfig(logger *slog.Logger) (Config, error) {
 		fileStoragePath: cfg.FileStoragePath,
 		databaseDSN:     cfg.DatabaseDSN,
 		secretKey:       cfg.SecretKey,
+		gRPC:            cfg.GRPC,
+		trustedSubnet:   ipnet,
 		configHTTPS: configHTTPS{
 			enable: cfg.EnableHTTPS,
 			domain: cfg.DomainName,

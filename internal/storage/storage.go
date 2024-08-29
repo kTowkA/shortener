@@ -35,6 +35,9 @@ type Storager interface {
 	// Ping проверка доступности хранилища
 	Ping(ctx context.Context) error
 
+	// Stats статистика по использованию сервиса
+	Stats(ctx context.Context) (model.StatsResponse, error)
+
 	// Close закрытие хранилища
 	Close() error
 }

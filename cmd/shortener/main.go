@@ -10,11 +10,13 @@ import (
 
 	"github.com/kTowkA/shortener/internal/app"
 	"github.com/kTowkA/shortener/internal/config"
+	gapp "github.com/kTowkA/shortener/internal/grpc/app"
 	"github.com/kTowkA/shortener/internal/logger"
 	"github.com/kTowkA/shortener/internal/storage"
 	"github.com/kTowkA/shortener/internal/storage/memory"
 	"github.com/kTowkA/shortener/internal/storage/postgres"
 	"github.com/kTowkA/shortener/internal/storage/postgres/migrations"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -58,8 +60,27 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	defer cancel()
-	if err = srv.Run(ctx, myStorage); err != nil {
-		customLog.Error("запуск сервера приложения", slog.String("ошибка", err.Error()))
+	gr, _ := errgroup.WithContext(ctx)
+	gr.Go(func() error {
+		if err = srv.Run(ctx, myStorage); err != nil {
+			customLog.Error("запуск сервера приложения", slog.String("ошибка", err.Error()))
+			return err
+		}
+		return nil
+	})
+	gr.Go(func() error {
+		if cfg.GRPC() == "" {
+			return nil
+		}
+		if err = gapp.Run(ctx, myStorage, customLog.Logger, cfg.GRPC()); err != nil {
+			customLog.Error("запуск gRPC-сервера приложения", slog.String("ошибка", err.Error()))
+			return err
+		}
+		return nil
+	})
+	err = gr.Wait()
+	if err != nil {
+		customLog.Error("запуск группы", slog.String("ошибка", err.Error()))
 	}
 }
 

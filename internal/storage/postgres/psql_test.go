@@ -1,6 +1,7 @@
 //go:build integrations
 // +build integrations
 
+// go:build integrations
 package postgres
 
 import (
@@ -20,7 +21,7 @@ import (
 
 type postgresSuite struct {
 	suite.Suite
-	*PStorage
+	*PostgresStorage
 	dockerClear
 }
 
@@ -91,11 +92,11 @@ func (suite *postgresSuite) SetupSuite() {
 	defer cancel()
 	ps, err := NewStorage(ctx, connString)
 	suite.Require().NoError(err)
-	suite.PStorage = ps
+	suite.PostgresStorage = ps
 }
 
 func (suite *postgresSuite) TearDownSuite() {
-	err := suite.PStorage.Close()
+	err := suite.PostgresStorage.Close()
 	suite.Require().NoError(err)
 	err = suite.dockerClear.pool.Purge(suite.dockerClear.resource)
 	suite.NoError(err)
@@ -490,6 +491,20 @@ func (suite *postgresSuite) TestDeleteURLs() {
 		}
 	}
 }
-func TestPStorage(t *testing.T) {
+
+func (suite *postgresSuite) TestStats() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// тут добавляем одно сохранение, чтобы в базе точно было одно значение
+	_, err := suite.SaveURL(ctx, uuid.New(), "test_stat_1", "test_stat_2")
+	suite.NoError(err)
+
+	stats, err := suite.Stats(ctx)
+	suite.NoError(err)
+	suite.GreaterOrEqual(stats.TotalURLs, 1)
+	suite.GreaterOrEqual(stats.TotalUsers, 1)
+}
+func TestPostgresStorage(t *testing.T) {
 	suite.Run(t, new(postgresSuite))
 }

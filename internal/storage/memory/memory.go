@@ -260,3 +260,17 @@ func (s *Storage) rewriteFile() error {
 	}
 	return nil
 }
+
+// Stats memory реализация интерфейса Storager
+func (s *Storage) Stats(ctx context.Context) (model.StatsResponse, error) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+	result := model.StatsResponse{}
+	result.TotalURLs = len(s.pairs)
+	users := make(map[string]bool)
+	for _, v := range s.pairs {
+		users[v.UserID] = true
+	}
+	result.TotalUsers = len(users)
+	return result, nil
+}

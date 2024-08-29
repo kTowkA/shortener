@@ -3,22 +3,18 @@ package app
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kTowkA/shortener/internal/model"
 	"github.com/kTowkA/shortener/internal/storage"
+	"github.com/kTowkA/shortener/internal/utils"
 )
 
 // encodeURL обработчик для кодирования входящего урла
@@ -66,11 +62,11 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 
-	newLink, err := s.saveLink(r.Context(), userID, link, attems)
+	newLink, err := utils.SaveLink(r.Context(), s.db, userID, link)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLConflict) {
 			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(newLink))
+			_, _ = w.Write([]byte(s.Config.BaseAddress() + newLink))
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -78,7 +74,7 @@ func (s *Server) encodeURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	_, _ = w.Write([]byte(newLink))
+	_, _ = w.Write([]byte(s.Config.BaseAddress() + newLink))
 }
 
 // decodeURL обработчик для декодирования короткой ссылки
@@ -145,7 +141,8 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		userID = uuid.New()
 	}
-	newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
+	// newLink, err := s.saveLink(r.Context(), userID, req.URL, attems)
+	newLink, err := utils.SaveLink(r.Context(), s.db, userID, req.URL)
 	if errors.Is(err, storage.ErrURLConflict) {
 		conflict = true
 	}
@@ -155,7 +152,7 @@ func (s *Server) apiShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := model.ResponseShortURL{
-		Result: newLink,
+		Result: s.Config.BaseAddress() + newLink,
 	}
 	resp, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
@@ -207,7 +204,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("Unmarshal")
 		return
 	}
-	req = validateBatch(req)
+	req = utils.ValidateAndGenerateBatch(req)
 	// проверяем, что есть запросы
 	if len(req) == 0 {
 		http.Error(w, fmt.Errorf("передали пустой batch").Error(), http.StatusBadRequest)
@@ -218,10 +215,15 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		userID = uuid.New()
 	}
-	resp, err := s.saveBatch(r.Context(), userID, req, attems)
+	resp, err := utils.SaveBatch(r.Context(), s.db, userID, req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	for i := range resp {
+		if resp[i].ShortURL != "" {
+			resp[i].ShortURL = s.Config.BaseAddress() + resp[i].ShortURL
+		}
 	}
 
 	result, err := json.MarshalIndent(resp, "", "  ")
@@ -319,136 +321,20 @@ func (s *Server) deleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
-
-func (s *Server) saveLink(ctx context.Context, userID uuid.UUID, link string, attems int) (string, error) {
-	const forUnique = "X"
-	genLink, err := generateSHA1(link, defaultLenght)
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.db.Stats(r.Context())
 	if err != nil {
-		return "", err
+		s.logger.Error("запрос статистики сервиса", slog.String("ошибка", err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	// создаем короткую ссылка за attems попыток генерации
-	for i := 0; i < attems; i++ {
-		savedLink, err := s.db.SaveURL(ctx, userID, link, genLink)
-		// такая ссылка уже существует
-		if errors.Is(err, storage.ErrURLIsExist) {
-			genLink = genLink + forUnique
-			continue
-		} else if errors.Is(err, storage.ErrURLConflict) {
-			return s.Config.BaseAddress() + savedLink, err
-		} else if err != nil {
-			return "", err
-		}
-
-		// успешно
-		return s.Config.BaseAddress() + savedLink, nil
+	result, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		s.logger.Error("конвертация в json", slog.String("ошибка", err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	// не уложись в заданное количество попыток для создания короткой ссылки
-	return "", errors.New("не смогли создать короткую ссылку")
-}
-func (s *Server) saveBatch(ctx context.Context, userID uuid.UUID, batch model.BatchRequest, attems int) (model.BatchResponse, error) {
-	result := make([]model.BatchResponseElement, 0, len(batch))
-	for i := 0; i < attems; i++ {
-		err := generateLinksBatch(batch)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := s.db.Batch(ctx, userID, batch)
-		if err != nil {
-			return nil, err
-		}
-		// очищаем batch и будем складывать в него строки с коллизиями
-		batch = make(model.BatchRequest, 0)
-		for i := range resp {
-			if resp[i].ShortURL != "" {
-				resp[i].ShortURL = s.Config.BaseAddress() + resp[i].ShortURL
-				result = append(result, resp[i])
-				continue
-			}
-			if resp[i].Error != nil {
-				s.logger.Error("ошибка в batch",
-					slog.String("original_url", resp[i].OriginalURL),
-					slog.String("ошибка", resp[i].Error.Error()),
-				)
-
-			}
-			// если были колизии пробуем сохранить с добавлением подстроки
-			if resp[i].Collision {
-				batch = append(batch, model.BatchRequestElement{
-					CorrelationID: resp[i].CorrelationID,
-					OriginalURL:   resp[i].OriginalURL,
-					ShortURL:      resp[i].ShortURL,
-				})
-			}
-		}
-		if len(batch) == 0 {
-			break
-		}
-	}
-	// не смогли уложиться в заданное количество попыток для сохранения всех ссылок
-	if len(batch) != 0 {
-		s.logger.Debug("не смогли уложиться в заданное количество попыток для сохранения всех ссылок",
-			slog.Int("сохранено", len(result)),
-			slog.Int("не сохранено", len(batch)),
-		)
-		return nil, fmt.Errorf("не было сохранено %d записей", len(batch))
-	}
-	return result, nil
-}
-func generateSHA1(original string, lenght int) (string, error) {
-	// получаем sha1
-	sum := sha1.Sum([]byte(original))
-	symbols := hex.EncodeToString(sum[:])
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	result := strings.Builder{}
-	result.Grow(20)
-	change := 0
-	for _, rs := range symbols {
-		s := string(rs)
-		change = r.Intn(2)
-		if change == 1 {
-			s = strings.ToUpper(s)
-		}
-		_, err := result.WriteString(s)
-		if err != nil {
-			return "", err
-		}
-		if result.Len() == lenght {
-			break
-		}
-	}
-	return result.String(), nil
-}
-
-func validateBatch(batch model.BatchRequest) model.BatchRequest {
-	newBatch := make([]model.BatchRequestElement, 0, len(batch))
-	for _, v := range batch {
-		v.OriginalURL = strings.TrimSpace(v.OriginalURL)
-		if v.OriginalURL == "" {
-			continue
-		}
-		if _, err := url.ParseRequestURI(v.OriginalURL); err != nil {
-			continue
-		}
-		newBatch = append(newBatch, v)
-	}
-	return newBatch
-}
-
-func generateLinksBatch(batch model.BatchRequest) error {
-	bonus := "X"
-	for i := range batch {
-		if batch[i].ShortURL != "" {
-			batch[i].ShortURL += bonus
-			continue
-		}
-		short, err := generateSHA1(batch[i].OriginalURL, defaultLenght)
-		if err != nil {
-			return err
-		}
-		batch[i].ShortURL = short
-	}
-	return nil
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result)
 }
