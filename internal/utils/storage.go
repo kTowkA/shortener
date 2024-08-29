@@ -14,17 +14,17 @@ import (
 
 // SaveLink пробует сгенерировать новую сокращенную ссылку для link за attems попыток для пользователя userID и сохранить в store.
 func SaveLink(ctx context.Context, store storage.Storager, userID uuid.UUID, link string) (string, error) {
-	genLink, err := GenerateShortStringSHA1(link, defaultLenght)
+	shortLink, err := GenerateShortStringSHA1(link, defaultLenght)
 	if err != nil {
 		return "", err
 	}
 
 	// создаем короткую ссылка за attems попыток генерации
-	for i := 0; i < attems; i++ {
-		savedLink, err := store.SaveURL(ctx, userID, link, genLink)
+	for i := 0; i < attempts; i++ {
+		savedLink, err := store.SaveURL(ctx, userID, link, shortLink)
 		// такая ссылка уже существует
 		if errors.Is(err, storage.ErrURLIsExist) {
-			genLink = genLink + bonus[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(bonus))]
+			shortLink = shortLink + bonus[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(bonus))]
 			continue
 		} else if errors.Is(err, storage.ErrURLConflict) {
 			return savedLink, err
@@ -37,13 +37,13 @@ func SaveLink(ctx context.Context, store storage.Storager, userID uuid.UUID, lin
 	}
 
 	// не уложись в заданное количество попыток для создания короткой ссылки
-	return "", fmt.Errorf("не смогли создать короткую ссылку за %d попыток генерации", attems)
+	return "", fmt.Errorf("не смогли создать короткую ссылку за %d попыток генерации", attempts)
 }
 
 // SaveBatch пробует сохранить ссылки из batch в хранилище store
 func SaveBatch(ctx context.Context, store storage.Storager, userID uuid.UUID, batch model.BatchRequest) (model.BatchResponse, error) {
 	result := make([]model.BatchResponseElement, 0, len(batch))
-	for i := 0; i < attems; i++ {
+	for i := 0; i < attempts; i++ {
 		err := GenerateShortStringsSHA1ForBatch(batch)
 		if err != nil {
 			return nil, err

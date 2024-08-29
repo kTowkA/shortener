@@ -17,7 +17,7 @@ var (
 )
 
 // GenerateShortStringSHA1 генерирует новую строку с применение алгоритма sha1 из original, обрезая ее длину до lenght и переводя случайные символы в верхний регистр
-func GenerateShortStringSHA1(original string, lenght int) (string, error) {
+func GenerateShortStringSHA1(original string, length int) (string, error) {
 	// получаем sha1
 	sum := sha1.Sum([]byte(original))
 	symbols := hex.EncodeToString(sum[:])
@@ -36,7 +36,7 @@ func GenerateShortStringSHA1(original string, lenght int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if result.Len() == lenght {
+		if result.Len() == length {
 			break
 		}
 	}

@@ -15,25 +15,25 @@ import (
 	"github.com/kTowkA/shortener/internal/storage"
 )
 
-// PStorage структура дря реализации интерфейса Storager
-type PStorage struct {
+// PostgresStorage структура дря реализации интерфейса Storager
+type PostgresStorage struct {
 	*pgxpool.Pool
 }
 
-// NewStorage создает новый экземпляр хранилища PStorage.
+// NewStorage создает новый экземпляр хранилища PostgresStorage.
 // На вход подаются контекст отмены ctx и строка для подключения к СУБД dsn.
-// возвращает экземпляр PStorage и возможную ошибку
-func NewStorage(ctx context.Context, dsn string) (*PStorage, error) {
+// возвращает экземпляр PostgresStorage и возможную ошибку
+func NewStorage(ctx context.Context, dsn string) (*PostgresStorage, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("создание клиента postgres. %w", err)
 	}
-	storage := &PStorage{pool}
+	storage := &PostgresStorage{pool}
 	return storage, nil
 }
 
 // SaveURL реализация интерфейса Storager
-func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
+func (p *PostgresStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short string) (string, error) {
 	resp, err := p.Batch(
 		ctx,
 		userID,
@@ -57,7 +57,7 @@ func (p *PStorage) SaveURL(ctx context.Context, userID uuid.UUID, real, short st
 }
 
 // RealURL реализация интерфейса Storager
-func (p *PStorage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
+func (p *PostgresStorage) RealURL(ctx context.Context, short string) (model.StorageJSON, error) {
 	answ := model.StorageJSON{}
 	err := p.QueryRow(
 		ctx,
@@ -77,18 +77,18 @@ func (p *PStorage) RealURL(ctx context.Context, short string) (model.StorageJSON
 }
 
 // Ping реализация интерфейса Storager
-func (p *PStorage) Ping(ctx context.Context) error {
+func (p *PostgresStorage) Ping(ctx context.Context) error {
 	return p.Pool.Ping(ctx)
 }
 
 // Close реализация интерфейса Storager
-func (p *PStorage) Close() error {
+func (p *PostgresStorage) Close() error {
 	p.Pool.Close()
 	return nil
 }
 
 // Batch реализация интерфейса Storager
-func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
+func (p *PostgresStorage) Batch(ctx context.Context, userID uuid.UUID, values model.BatchRequest) (model.BatchResponse, error) {
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("создание транзакции. %w", err)
@@ -180,7 +180,7 @@ func (p *PStorage) Batch(ctx context.Context, userID uuid.UUID, values model.Bat
 }
 
 // DeleteURLs реализация интерфейса Storager
-func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
+func (p *PostgresStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURLMessage) error {
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("создание транзакции. %w", err)
@@ -225,7 +225,7 @@ func (p *PStorage) DeleteURLs(ctx context.Context, deleteLinks []model.DeleteURL
 }
 
 // получить уже сохраненое значение (для исключения дублирования original_url)
-func (p *PStorage) short(ctx context.Context, real string, userID uuid.UUID) (string, error) {
+func (p *PostgresStorage) short(ctx context.Context, real string, userID uuid.UUID) (string, error) {
 
 	var short string
 	err := p.QueryRow(
@@ -244,7 +244,7 @@ func (p *PStorage) short(ctx context.Context, real string, userID uuid.UUID) (st
 }
 
 // UserURLs реализация интерфейса Storager
-func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
+func (p *PostgresStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.StorageJSON, error) {
 	rows, err := p.Query(
 		ctx,
 		"SELECT short_url,original_url,is_deleted FROM url_list WHERE user_id=$1",
@@ -273,7 +273,7 @@ func (p *PStorage) UserURLs(ctx context.Context, userID uuid.UUID) ([]model.Stor
 }
 
 // Stats реализация интерфейса Storager
-func (p *PStorage) Stats(ctx context.Context) (model.StatsResponse, error) {
+func (p *PostgresStorage) Stats(ctx context.Context) (model.StatsResponse, error) {
 	result := model.StatsResponse{}
 	err := p.QueryRow(ctx, "SELECT COUNT(DISTINCT(user_id)) AS c1,COUNT(DISTINCT(short_url)) AS c2 FROM url_list").Scan(&result.TotalUsers, &result.TotalURLs)
 	if err != nil {

@@ -32,7 +32,7 @@ func Run(ctx context.Context, db storage.Storager, log *slog.Logger, address str
 		return nil
 	})
 	gr.Go(func() error {
-		s := server.CreategRPCServer(db, log)
+		s := server.NewGRPCServer(db, log)
 		pb.RegisterShortenerServer(gRPCServer, s)
 
 		l, err := net.Listen("tcp", address)

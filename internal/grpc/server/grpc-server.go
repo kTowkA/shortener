@@ -22,7 +22,7 @@ type ShortenerServer struct {
 }
 
 // CreategRPCServer создает структуру реализующую gRPC сервис Shortener которую будем регистрировать
-func CreategRPCServer(db storage.Storager, logger *slog.Logger) *ShortenerServer {
+func NewGRPCServer(db storage.Storager, logger *slog.Logger) *ShortenerServer {
 	return &ShortenerServer{
 		db:     db,
 		logger: logger,
@@ -32,14 +32,14 @@ func CreategRPCServer(db storage.Storager, logger *slog.Logger) *ShortenerServer
 // DecodeURL реализация gRPC сервиса Shortener
 func (s *ShortenerServer) DecodeURL(ctx context.Context, r *pb.DecodeURLRequest) (*pb.DecodeURLResponse, error) {
 	resp, err := s.db.RealURL(ctx, r.ShortUrl)
-	if errors.Is(err, storage.ErrURLNotFound) {
+	switch {
+	case errors.Is(err, storage.ErrURLNotFound):
 		s.logger.Debug("поиск оригинального URL. ничего не найдено", slog.String("short", r.ShortUrl))
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("по запросу \"%s\" ничего не найдено", r.ShortUrl))
-	} else if err != nil {
+	case err != nil:
 		s.logger.Error("поиск оригинального URL", slog.String("short", r.ShortUrl), slog.String("ошибка", err.Error()))
 		return nil, err
-	}
-	if resp.IsDeleted {
+	case resp.IsDeleted:
 		s.logger.Debug("поиск оригинального URL. ресурс удален", slog.String("short", r.ShortUrl))
 		return nil, fmt.Errorf("ресурс \"%s\" уже был удален", r.ShortUrl)
 	}
